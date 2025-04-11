@@ -1,56 +1,74 @@
 <script setup lang="ts">
 import NumberFlow from '@number-flow/vue'
-import { Activity, CreditCard, DollarSign, Users } from 'lucide-vue-next'
+import { Megaphone, ShoppingCart, Newspaper, RefreshCw, Users } from 'lucide-vue-next'
 
 const dataCard = ref({
-  totalRevenue: 0,
-  totalRevenueDesc: 0,
-  subscriptions: 0,
-  subscriptionsDesc: 0,
-  sales: 0,
-  salesDesc: 0,
-  activeNow: 0,
-  activeNowDesc: 0,
+  announcements: 0,
+  announcementsDesc: 0,
+  markets: 0,
+  marketsDesc: 0,
+  news: 0,
+  newsDesc: 0,
+  updates: 0,
+  updatesDesc: 0,
 })
 
-const dataRecentSales = [
+const dataRecentUsers = [
   {
-    name: 'Olivia Martin',
-    email: 'olivia.martin@email.com',
-    amount: 1999,
+    name: 'Budi Santoso',
+    role: 'Petani Padi',
+    lastActive: '5 menit yang lalu',
   },
   {
-    name: 'Jackson Lee',
-    email: 'jackson.lee@email.com',
-    amount: 39,
+    name: 'Siti Rahayu',
+    role: 'Penyuluh Pertanian',
+    lastActive: '20 menit yang lalu',
   },
   {
-    name: 'Isabella Nguyen',
-    email: 'isabella.nguyen@email.com',
-    amount: 299,
+    name: 'Ahmad Wijaya',
+    role: 'Distributor Pupuk',
+    lastActive: '1 jam yang lalu',
   },
   {
-    name: 'William Kim',
-    email: 'will@email.com',
-    amount: 99,
+    name: 'Dewi Lestari',
+    role: 'Petani Sayuran',
+    lastActive: '3 jam yang lalu',
   },
   {
-    name: 'Sofia Davis',
-    email: 'sofia.davis@email.com',
-    amount: 39,
+    name: 'Hadi Purnomo',
+    role: 'Administrator',
+    lastActive: '5 jam yang lalu',
+  },
+]
+
+const juruTaniImages = [
+  {
+    src: '/images/panen.png',
+    alt: 'Petani sedang menanam padi',
+    title: 'Penanaman Padi Organik',
+  },
+  {
+    src: '/images/panen.png',
+    alt: 'Proses panen hasil pertanian',
+    title: 'Panen Raya Desa Sukamaju',
+  },
+  {
+    src: '/images/panen.png',
+    alt: 'Pelatihan petani',
+    title: 'Pelatihan Teknologi Pertanian',
   },
 ]
 
 onMounted(() => {
   dataCard.value = {
-    totalRevenue: 45231.89,
-    totalRevenueDesc: 20.1 / 100,
-    subscriptions: 2350,
-    subscriptionsDesc: 180.5 / 100,
-    sales: 12234,
-    salesDesc: 45 / 100,
-    activeNow: 573,
-    activeNowDesc: 201,
+    announcements: 12,
+    announcementsDesc: 3 / 100,
+    markets: 28,
+    marketsDesc: 12.5 / 100,
+    news: 45,
+    newsDesc: 8.7 / 100,
+    updates: 17,
+    updatesDesc: 5,
   }
 })
 </script>
@@ -59,11 +77,10 @@ onMounted(() => {
   <div class="w-full flex flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h2 class="text-2xl font-bold tracking-tight">
-        Dashboard
+        Dashboard Juru Tani
       </h2>
       <div class="flex items-center space-x-2">
         <BaseDateRangePicker />
-        <Button>Download</Button>
       </div>
     </div>
     <main class="flex flex-1 flex-col gap-4 md:gap-8">
@@ -71,92 +88,88 @@ onMounted(() => {
         <Card>
           <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle class="text-sm font-medium">
-              Total Revenue
+              Pengumuman
             </CardTitle>
-            <DollarSign class="h-4 w-4 text-muted-foreground" />
+            <Megaphone class="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div class="text-2xl font-bold">
               <NumberFlow
-                :value="dataCard.totalRevenue"
-                :format="{ style: 'currency', currency: 'USD', trailingZeroDisplay: 'stripIfInteger' }"
+                :value="dataCard.announcements"
               />
             </div>
             <p class="text-xs text-muted-foreground">
               <NumberFlow
-                :value="dataCard.totalRevenueDesc"
+                :value="dataCard.announcementsDesc"
                 prefix="+"
                 :format="{ style: 'percent', minimumFractionDigits: 1 }"
               />
-              from last month
+              dari minggu lalu
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle class="text-sm font-medium">
-              Subscriptions
+              Markets
             </CardTitle>
-            <Users class="h-4 w-4 text-muted-foreground" />
+            <ShoppingCart class="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div class="text-2xl font-bold">
               <NumberFlow
-                :value="dataCard.subscriptions"
-                prefix="+"
+                :value="dataCard.markets"
               />
             </div>
             <p class="text-xs text-muted-foreground">
               <NumberFlow
-                :value="dataCard.subscriptionsDesc"
+                :value="dataCard.marketsDesc"
                 prefix="+"
                 :format="{ style: 'percent', minimumFractionDigits: 1 }"
-              /> from last month
+              /> dari minggu lalu
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle class="text-sm font-medium">
-              Sales
+              News
             </CardTitle>
-            <CreditCard class="h-4 w-4 text-muted-foreground" />
+            <Newspaper class="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div class="text-2xl font-bold">
               <NumberFlow
-                :value="dataCard.sales"
-                prefix="+"
+                :value="dataCard.news"
               />
             </div>
             <p class="text-xs text-muted-foreground">
               <NumberFlow
-                :value="dataCard.salesDesc"
+                :value="dataCard.newsDesc"
                 prefix="+"
                 :format="{ style: 'percent', minimumFractionDigits: 1 }"
-              /> from last month
+              /> dari minggu lalu
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle class="text-sm font-medium">
-              Active Now
+              Updates
             </CardTitle>
-            <Activity class="h-4 w-4 text-muted-foreground" />
+            <RefreshCw class="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div class="text-2xl font-bold">
               <NumberFlow
-                :value="dataCard.activeNow"
-                prefix="+"
+                :value="dataCard.updates"
               />
             </div>
             <p class="text-xs text-muted-foreground">
               <NumberFlow
-                :value="dataCard.activeNowDesc"
+                :value="dataCard.updatesDesc"
                 prefix="+"
-              /> since last hour
+              /> dari kemarin
             </p>
           </CardContent>
         </Card>
@@ -164,38 +177,39 @@ onMounted(() => {
       <div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3 md:gap-8">
         <Card class="xl:col-span-2">
           <CardHeader>
-            <CardTitle>Overview</CardTitle>
+            <CardTitle>Galeri Juru Tani</CardTitle>
           </CardHeader>
-          <CardContent class="pl-2">
-            <DashboardOverview />
+          <CardContent>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div v-for="(image, index) in juruTaniImages" :key="index" class="flex flex-col gap-2">
+                <img :src="image.src" :alt="image.alt" class="rounded-md w-full h-48 object-cover" />
+                <p class="text-sm font-medium">{{ image.title }}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Recent Sales</CardTitle>
+            <CardTitle>Users Aktif</CardTitle>
           </CardHeader>
           <CardContent class="grid gap-8">
             <div
-              v-for="recentSales in dataRecentSales" :key="recentSales.name"
+              v-for="user in dataRecentUsers" :key="user.name"
               class="flex items-center gap-4"
             >
               <Avatar class="hidden h-9 w-9 sm:flex">
-                <AvatarFallback>{{ recentSales.name.split(' ').map((n) => n[0]).join('') }}</AvatarFallback>
+                <AvatarFallback>{{ user.name.split(' ')[0][0] }}{{ user.name.split(' ').length > 1 ? user.name.split(' ')[1][0] : '' }}</AvatarFallback>
               </Avatar>
               <div class="grid gap-1">
                 <p class="text-sm font-medium leading-none">
-                  {{ recentSales.name }}
+                  {{ user.name }}
                 </p>
                 <p class="text-sm text-muted-foreground">
-                  {{ recentSales.email }}
+                  {{ user.role }}
                 </p>
               </div>
-              <div class="ml-auto font-medium">
-                <NumberFlow
-                  :value="recentSales.amount"
-                  :format="{ style: 'currency', currency: 'USD', trailingZeroDisplay: 'stripIfInteger' }"
-                  prefix="+"
-                />
+              <div class="ml-auto text-xs text-muted-foreground">
+                {{ user.lastActive }}
               </div>
             </div>
           </CardContent>

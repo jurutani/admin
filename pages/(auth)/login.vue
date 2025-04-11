@@ -9,10 +9,10 @@ definePageMeta({
     <div class="grid mx-auto max-w-sm gap-6">
       <div class="grid gap-2 text-center">
         <h1 class="text-2xl font-semibold tracking-tight">
-          Welcome back
+          Welcome back to Juru Tani
         </h1>
         <p class="text-balance text-sm text-muted-foreground">
-          Login with your Apple or Google account
+          Login with your Google account
         </p>
       </div>
       <AuthSignIn />

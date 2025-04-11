@@ -26,15 +26,15 @@ useHead({
   },
 })
 
-const title = 'Nuxt Shadcn UI - Dashboard Template'
-const description = 'This dashboard, built with Nuxt, Shadcn UI, and UnoCSS. It includes a dark mode toggle and is optimized for performance and data efficiency.'
+const title = 'Juru Tani Admin - Dashboard'
+const description = 'Dashboard ini dibuat untuk membantu petani dalam mengelola hasil pertanian mereka. Dashboard ini memiliki fitur untuk menampilkan data hasil pertanian, grafik hasil pertanian, dan juga fitur untuk mengelola data petani.'
 
 useSeoMeta({
   title,
   description,
   ogTitle: title,
   ogDescription: description,
-  ogUrl: 'https://dashboard.dianprata.com',
+  ogUrl: 'https://jurutaniadmin.jurutani.com',
   ogImage: 'https://nuxt-shadcn-dashboard.vercel.app/social-card.png',
   twitterTitle: title,
   twitterDescription: description,
