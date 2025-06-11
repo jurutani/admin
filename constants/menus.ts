@@ -16,7 +16,7 @@ export const navMenu: NavMenu[] = [
       },
       {
         title: 'Discussions',
-        icon: 'i-lucide-message',
+        icon: 'i-lucide-message-circle',
         link: '/discussions',
       },
       {

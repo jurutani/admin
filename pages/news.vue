@@ -13,4 +13,3 @@
     <NuxtPage />
   </div>
 </template>
-
