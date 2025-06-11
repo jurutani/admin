@@ -15,6 +15,11 @@ export const navMenu: NavMenu[] = [
         link: '/announcements',
       },
       {
+        title: 'Discussions',
+        icon: 'i-lucide-message',
+        link: '/discussions',
+      },
+      {
         title: 'News',
         icon: 'i-lucide-newspaper',
         link: '/news',
@@ -29,12 +34,6 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-refresh-ccw',
         link: '/updates',
       },
-      {
-        title: 'Tasks',
-        icon: 'i-lucide-calendar-check-2',
-        link: '/tasks',
-        new: true,
-      },
     ],
   },
   {
@@ -48,11 +47,6 @@ export const navMenu: NavMenu[] = [
             title: 'Login',
             icon: 'i-lucide-circle',
             link: '/login',
-          },
-          {
-            title: 'Login Basic',
-            icon: 'i-lucide-circle',
-            link: '/login-basic',
           },
           {
             title: 'Register',
@@ -71,29 +65,9 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-triangle-alert',
         children: [
           {
-            title: '401 - Unauthorized',
-            icon: 'i-lucide-circle',
-            link: '/401',
-          },
-          {
-            title: '403 - Forbidden',
-            icon: 'i-lucide-circle',
-            link: '/403',
-          },
-          {
             title: '404 - Not Found',
             icon: 'i-lucide-circle',
             link: '/404',
-          },
-          {
-            title: '500 - Internal Server Error',
-            icon: 'i-lucide-circle',
-            link: '/500',
-          },
-          {
-            title: '503 - Service Unavailable',
-            icon: 'i-lucide-circle',
-            link: '/503',
           },
         ],
       },
@@ -137,11 +111,11 @@ export const navMenuBottom: NavMenuItems = [
   {
     title: 'Help & Support',
     icon: 'i-lucide-circle-help',
-    link: 'https://github.com/dianprata/nuxt-shadcn-dashboard',
+    link: 'https://github.com/IlhamKurniawanBlora',
   },
   {
     title: 'Feedback',
     icon: 'i-lucide-send',
-    link: 'https://github.com/dianprata/nuxt-shadcn-dashboard',
+    link: 'https://github.com/IlhamKurniawanBlora',
   },
 ]

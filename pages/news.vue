@@ -1,9 +1,3 @@
-<script setup lang="ts">
-import { columns } from '@/components/tasks/components/columns'
-import DataTable from '@/components/tasks/components/DataTable.vue'
-import tasks from '@/components/tasks/data/tasks.json'
-</script>
-
 <template>
   <div class="w-full flex flex-col items-stretch gap-4">
     <div class="flex flex-wrap items-end justify-between gap-2">
@@ -12,14 +6,11 @@ import tasks from '@/components/tasks/data/tasks.json'
           News
         </h2>
         <p class="text-muted-foreground">
-          ini adalah data dari Berita yang ada di dashboard juru tani
+          ini adalah data dari News yang ada di dashboard juru tani
         </p>
       </div>
     </div>
-    <DataTable :data="tasks.data" :columns="columns" />
+    <NuxtPage />
   </div>
 </template>
 
-<style scoped>
-
-</style>

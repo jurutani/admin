@@ -71,6 +71,14 @@ onMounted(() => {
     updatesDesc: 5,
   }
 })
+
+// const { fetchSession, isAdmin } = useSession()
+// await fetchSession()
+
+// if (!isAdmin.value) {
+//   // Redirect jika bukan admin
+//   navigateTo('/auth/login')
+// }
 </script>
 
 <template>

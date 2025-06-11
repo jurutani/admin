@@ -59,14 +59,7 @@ const showModalTheme = ref(false)
               </div>
             </div>
           </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuItem>
-              <Icon name="i-lucide-sparkles" />
-              Upgrade to Pro
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
+          <DropdownMenuSeparator />          
           <DropdownMenuGroup>
             <DropdownMenuItem>
               <Icon name="i-lucide-badge-check" />
@@ -84,7 +77,7 @@ const showModalTheme = ref(false)
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem as-child>
-              <NuxtLink to="https://github.com/dianprata/nuxt-shadcn-dashboard" external target="_blank">
+              <NuxtLink to="https://github.com/IlhamKurniawanBlora" disabled external target="_blank">
                 <Icon name="i-lucide-github" />
                 Github Repository
               </NuxtLink>

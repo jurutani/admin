@@ -8,7 +8,7 @@ const router = useRouter()
 
 <template>
   <div class="h-svh">
-    <div class="m-auto h-full w-full flex flex-col items-center justify-center gap-2">
+    <div class="m-auto h-full w-full flex flex-col items-center justify-center gap-2 bg-cover bg-center" style="background-image: url('/images/polbangtan.png');">
       <h1 class="text-[7rem] font-bold leading-tight">
         404
       </h1>

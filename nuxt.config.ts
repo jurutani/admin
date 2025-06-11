@@ -1,7 +1,16 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   devtools: { enabled: true },
-
+  runtimeConfig: {
+    // Private keys (hanya tersedia di server-side)
+    supabaseServiceRole: process.env.SUPABASE_SERVICE_ROLE,
+    // Public keys (tersedia di client-side)
+    public: {
+      baseUrl: process.env.BASE_URL || 'http://localhost:3000',
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseKey: process.env.SUPABASE_KEY,
+    },
+  },
   modules: [
     '@unocss/nuxt',
     'shadcn-nuxt',

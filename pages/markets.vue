@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { columns } from '@/components/tasks/components/columns'
-import DataTable from '@/components/tasks/components/DataTable.vue'
-import tasks from '@/components/tasks/data/tasks.json'
+
 </script>
 
 <template>
@@ -16,7 +14,7 @@ import tasks from '@/components/tasks/data/tasks.json'
         </p>
       </div>
     </div>
-    <DataTable :data="tasks.data" :columns="columns" />
+    <NuxtPage />
   </div>
 </template>
 

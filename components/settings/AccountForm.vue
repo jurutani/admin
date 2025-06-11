@@ -44,8 +44,6 @@ const accountFormSchema = toTypedSchema(z.object({
   language: z.string().min(1, 'Please select a language.'),
 }))
 
-// https://github.com/logaretm/vee-validate/issues/3521
-// https://github.com/logaretm/vee-validate/discussions/3571
 async function onSubmit(values: any) {
   toast({
     title: 'You submitted the following values:',

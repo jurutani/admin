@@ -7,7 +7,7 @@
     <div class="flex flex-wrap items-end justify-between gap-2">
       <div>
         <h2 class="text-2xl font-bold tracking-tight">
-          Announcements
+          Discussions
         </h2>
         <p class="text-muted-foreground">
           ini adalah data dari pengumuman yang ada di dashboard juru tani
