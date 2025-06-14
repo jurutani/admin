@@ -10,16 +10,6 @@ export const navMenu: NavMenu[] = [
         link: '/',
       },
       {
-        title: 'Announcements',
-        icon: 'i-lucide-bell',
-        link: '/announcements',
-      },
-      {
-        title: 'Discussions',
-        icon: 'i-lucide-message-circle',
-        link: '/discussions',
-      },
-      {
         title: 'News',
         icon: 'i-lucide-newspaper',
         link: '/news',
@@ -29,77 +19,70 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-bar-chart-2',
         link: '/markets',
       },
+    ],
+  },
+  {
+    heading: 'Discussions',
+    items: [
       {
-        title: 'Updates',
-        icon: 'i-lucide-refresh-ccw',
-        link: '/updates',
+        title: 'Forum',
+        icon: 'i-lucide-message-square',
+        link: '/forum',
+      },
+      {
+        title: 'Chat',
+        icon: 'i-lucide-message-circle',
+        link: '/chat',
       },
     ],
   },
   {
-    heading: 'Pages',
+    heading: 'Resources',
     items: [
       {
-        title: 'Authentication',
-        icon: 'i-lucide-lock-keyhole-open',
-        children: [
-          {
-            title: 'Login',
-            icon: 'i-lucide-circle',
-            link: '/login',
-          },
-          {
-            title: 'Register',
-            icon: 'i-lucide-circle',
-            link: '/register',
-          },
-          {
-            title: 'Forgot Password',
-            icon: 'i-lucide-circle',
-            link: '/forgot-password',
-          },
-        ],
+        title: 'Books',
+        icon: 'i-lucide-book',
+        link: '/resources/books',
       },
       {
-        title: 'Errors',
-        icon: 'i-lucide-triangle-alert',
-        children: [
-          {
-            title: '404 - Not Found',
-            icon: 'i-lucide-circle',
-            link: '/404',
-          },
-        ],
+        title: 'Videos',
+        icon: 'i-lucide-video',
+        link: '/resources/videos',
       },
       {
-        title: 'Settings',
-        icon: 'i-lucide-settings',
+        title: 'Courses',
+        icon: 'i-lucide-book-open',
+        link: '/resources/courses',
+      },
+    ],
+  },
+  {
+    heading: 'Admin',
+    items: [
+      {
+        title: 'Dashboard',
+        icon: 'i-lucide-grid',
+        link: '/dashboard',
+      },
+      {
+        title: 'Users',
+        icon: 'i-lucide-users',
         new: true,
         children: [
           {
-            title: 'Profile',
+            title: 'All Users',
             icon: 'i-lucide-circle',
-            link: '/settings/profile',
+            link: '/users',
           },
           {
-            title: 'Account',
+            title: 'Experts',
             icon: 'i-lucide-circle',
-            link: '/settings/account',
+            link: '/users/experts',
           },
           {
-            title: 'Appearance',
+            title: 'Instructors',
             icon: 'i-lucide-circle',
-            link: '/settings/appearance',
-          },
-          {
-            title: 'Notifications',
-            icon: 'i-lucide-circle',
-            link: '/settings/notifications',
-          },
-          {
-            title: 'Display',
-            icon: 'i-lucide-circle',
-            link: '/settings/display',
+            link: '/users/instructors',
           },
         ],
       },

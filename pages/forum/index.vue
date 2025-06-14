@@ -1,23 +1,14 @@
-<script setup lang="ts">
-
-</script>
-
 <template>
   <div class="w-full flex flex-col items-stretch gap-4">
     <div class="flex flex-wrap items-end justify-between gap-2">
       <div>
         <h2 class="text-2xl font-bold tracking-tight">
-          Role User
+          Resource Videos
         </h2>
         <p class="text-muted-foreground">
-          ini adalah data dari role yang ada di dashboard juru tani
+          ini adalah data dari News yang ada di dashboard juru tani
         </p>
       </div>
     </div>
-    <NuxtPage />
   </div>
 </template>
-
-<style scoped>
-
-</style>
