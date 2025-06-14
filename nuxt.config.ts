@@ -49,6 +49,9 @@ export default defineNuxtConfig({
       './lib',
     ],
   },
-
+  ssr: true, // bisa true atau false, tapi harus ada preset static
+  nitro: {
+    preset: 'static',
+  },
   compatibilityDate: '2024-12-14',
 })
