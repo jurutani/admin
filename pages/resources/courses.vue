@@ -6,7 +6,7 @@ const loading = ref(true)
 
 onMounted(async () => {
   const { data, error } = await supabase
-    .from('meeting') // ganti dengan nama itabel kamu
+    .from('meetings') // ganti dengan nama itabel kamu
     .select('*')
     .order('created_at', { ascending: false })
 
@@ -24,7 +24,7 @@ onMounted(async () => {
   <div class="p-6">
     <h1 class="text-xl font-bold mb-4">Data dari Supabase</h1>
     <div v-if="loading">Memuat data...</div>
-    <pre v-else class="bg-gray-100 p-4 rounded text-sm overflow-auto">
+    <pre v-else class="  p-4 rounded text-sm overflow-auto">
 {{ JSON.stringify(meetingList, null, 2) }}
     </pre>
   </div>
