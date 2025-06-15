@@ -2,6 +2,7 @@
 export default defineNuxtConfig({
   devtools: { enabled: true },
   runtimeConfig: {
+    /* eslint-disable node/prefer-global/process */
     supabaseServiceRole: process.env.SUPABASE_SERVICE_ROLE,
     // Public keys (tersedia di client-side)
     public: {
