@@ -12,7 +12,8 @@ onMounted(async () => {
 
   if (error) {
     console.error('Gagal memuat data:', error)
-  } else {
+  }
+  else {
     marketList.value = data
   }
 

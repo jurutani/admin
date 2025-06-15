@@ -65,6 +65,11 @@ export const navMenu: NavMenu[] = [
         link: '/dashboard',
       },
       {
+        title: 'Enum',
+        icon: 'i-lucide-list-check',
+        link: '/enum',
+      },
+      {
         title: 'Users',
         icon: 'i-lucide-users',
         new: true,
