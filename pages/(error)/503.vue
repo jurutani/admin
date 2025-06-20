@@ -10,12 +10,12 @@ const router = useRouter()
   <div class="h-svh">
     <div class="m-auto h-full w-full flex flex-col items-center justify-center gap-2">
       <h1 class="text-[7rem] font-bold leading-tight">
-        404
+        503
       </h1>
-      <span class="font-medium">Oops! Page Not Found!</span>
+      <span class="font-medium">Website is under maintenance!</span>
       <p class="text-center text-muted-foreground">
-        It seems like the page you're looking for <br>
-        does not exist or might have been removed.
+        The site is not available at the moment. <br>
+        We'll be back online shortly.
       </p>
       <div class="mt-6 flex gap-4">
         <Button variant="outline" @click="router.back()">
