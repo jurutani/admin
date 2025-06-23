@@ -1,180 +1,540 @@
 <script setup lang="ts">
+import { ArrowLeft, Edit, Trash2, UserCheck, MapPin, Phone, Mail, Calendar, User, Globe, FileText, RotateCcw } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
-import { Calendar, Link as LinkIcon, Paperclip, Tag, Clock } from 'lucide-vue-next'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Separator } from '@/components/ui/separator'
+import { toast } from '@/components/ui/toast'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 
-const route = useRoute();
-const id = Number(route.params.id);
+const route = useRoute()
+const router = useRouter()
+const supabase = useSupabaseClient()
 
-interface Attachment {
-  name: string;
-  url: string;
+// Get user ID from route params
+const userId = route.params.id as string
+
+// Reactive states
+const deleteDialogOpen = ref(false)
+const loading = ref(false)
+
+// Function to get avatar URL from bucket
+function getAvatarUrl(avatarPath: string | null) {
+  if (!avatarPath) return null
+  
+  const { data } = supabase.storage
+    .from('avatars')
+    .getPublicUrl(`/${avatarPath}`)
+  
+  return data.publicUrl
 }
 
-interface News {
-  id: number;
-  title: string;
-  sub_title?: string;
-  content: string;
-  category: string;
-  attachments: Attachment[];
-  link?: string;
-  status_news: 'pending' | 'approved' | 'rejected';
-  created_at: Date;
-  updated_at?: Date;
-  published_at?: Date;
-  deleted_at?: Date;
-  author_id?: string;
+// Fetch user detail
+async function fetchUserDetail() {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
+    if (error) {
+      console.error('Error fetching user detail:', error)
+      throw error
+    }
+
+    if (!data) {
+      throw new Error('User not found')
+    }
+
+    // Process data to include avatar URL and status
+    const processedData = {
+      ...data,
+      email: data.email || '',
+      avatarUrl: getAvatarUrl(data.avatar_url),
+      isActive: !data.deleted_at,
+      isArchived: !!data.archived_at
+    }
+
+    return processedData
+  } catch (error) {
+    console.error('Error in fetchUserDetail:', error)
+    throw error
+  }
 }
 
-const dummyNewsList: News[] = [
-  {
-    id: 1,
-    title: 'Berita Pertama',
-    sub_title: 'Subjudul berita pertama',
-    content: '<p>Ini adalah isi berita pertama...</p>',
-    category: 'Umum',
-    attachments: [
-      { name: 'Dokumen.pdf', url: '#' },
-      { name: 'Lampiran-Data.xlsx', url: '#' }
-    ],
-    link: 'https://example.com',
-    status_news: 'approved',
-    created_at: new Date('2025-02-15T08:30:00'),
-    updated_at: new Date('2025-02-16T10:15:00'),
-    published_at: new Date('2025-02-17T09:00:00'),
-  },
-  {
-    id: 2,
-    title: 'Berita Kedua',
-    sub_title: 'Subjudul berita kedua',
-    content: '<p>Ini adalah isi berita kedua...</p>',
-    category: 'Pendidikan',
-    attachments: [],
-    link: '',
-    status_news: 'pending',
-    created_at: new Date('2025-03-10T14:20:00'),
-    published_at: null,
-  },
-];
+// Fetch user data
+const { data: userDetail, pending: userPending, error: userError, refresh: refreshUser } = await useAsyncData(
+  `user-detail-${userId}`,
+  fetchUserDetail
+)
 
-const news = computed(() => dummyNewsList.find((n) => n.id === id) || dummyNewsList[0]);
+// Redirect if user not found
+if (userError.value) {
+  throw createError({
+    statusCode: 404,
+    statusMessage: 'User not found'
+  })
+}
 
-function formatDate(date: Date | string | null) {
-  if (!date) return 'Belum diterbitkan';
+// Helper functions
+function formatDate(date: string | null) {
+  if (!date) return 'Tidak tersedia'
   return new Date(date).toLocaleDateString('id-ID', {
-    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
-  });
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
-function statusColor(status: string) {
-  switch (status) {
-    case 'approved': return 'success';
-    case 'pending': return 'secondary';
-    case 'rejected': return 'destructive';
-    default: return 'outline';
+function formatDateOnly(date: string | null) {
+  if (!date) return 'Tidak tersedia'
+  return new Date(date).toLocaleDateString('id-ID', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+}
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+function goBack() {
+  router.back()
+}
+
+// User actions
+async function deleteUser() {
+  if (!userDetail.value) return
+
+  loading.value = true
+  try {
+    // Soft delete: update deleted_at
+    const { error } = await supabase
+      .from('profiles')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', userId)
+
+    if (error) {
+      throw error
+    }
+
+    toast({
+      title: 'Berhasil',
+      description: 'Petani berhasil dihapus dari sistem (soft delete)',
+    })
+
+    // Refresh data
+    await refreshUser()
+
+  } catch (error) {
+    console.error('Error deleting user:', error)
+    toast({
+      title: 'Gagal',
+      description: 'Terjadi kesalahan saat menghapus petani',
+      variant: 'destructive',
+    })
+  } finally {
+    loading.value = false
+    deleteDialogOpen.value = false
   }
 }
 
-function statusText(status: string) {
-  switch (status) {
-    case 'approved': return 'Disetujui';
-    case 'pending': return 'Menunggu';
-    case 'rejected': return 'Ditolak';
-    default: return status;
+async function restoreUser() {
+  if (!userDetail.value) return
+
+  loading.value = true
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ deleted_at: null })
+      .eq('id', userId)
+
+    if (error) {
+      throw error
+    }
+
+    toast({
+      title: 'Berhasil',
+      description: 'Petani berhasil dipulihkan',
+    })
+
+    // Refresh data
+    await refreshUser()
+
+  } catch (error) {
+    console.error('Error restoring user:', error)
+    toast({
+      title: 'Gagal',
+      description: 'Terjadi kesalahan saat memulihkan petani',
+      variant: 'destructive',
+    })
+  } finally {
+    loading.value = false
   }
 }
+
+async function archiveUser() {
+  if (!userDetail.value) return
+
+  loading.value = true
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', userId)
+
+    if (error) {
+      throw error
+    }
+
+    toast({
+      title: 'Berhasil',
+      description: 'Petani berhasil diarsipkan',
+    })
+
+    // Refresh data
+    await refreshUser()
+
+  } catch (error) {
+    console.error('Error archiving user:', error)
+    toast({
+      title: 'Gagal',
+      description: 'Terjadi kesalahan saat mengarsipkan petani',
+      variant: 'destructive',
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+// Set page title
+useHead({
+  title: `Detail Petani - ${userDetail.value?.full_name || 'Loading...'}`
+})
 </script>
 
 <template>
-  <div class="p-6 max-w-4xl mx-auto">
-    <div class="flex items-center justify-between mb-6">
-      <NuxtLink to="/news" class="flex items-center gap-2 text-blue-600 hover:underline">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5M5 12l7 7M5 12l7-7" />
-        </svg>
-        Kembali ke Daftar Berita
-      </NuxtLink>
-
-      <Badge :variant="statusColor(news.status_news)" class="text-sm py-1 px-3">
-        {{ statusText(news.status_news) }}
-      </Badge>
-    </div>
-
-    <div class="rounded-lg shadow-md overflow-hidden">
-      <div class="p-6">
-        <h1 class="text-3xl font-bold">{{ news.title }}</h1>
-        <p v-if="news.sub_title" class="text-xl mt-2">{{ news.sub_title }}</p>
-
-        <div class="flex flex-wrap gap-4 mt-4 text-sm">
-          <div class="flex items-center gap-1">
-            <Tag class="h-4 w-4" />
-            <span>{{ news.category }}</span>
-          </div>
-
-          <div class="flex items-center gap-1">
-            <Calendar class="h-4 w-4" />
-            <span>Diterbitkan: {{ formatDate(news.published_at) }}</span>
-          </div>
-
-          <div v-if="news.created_at" class="flex items-center gap-1">
-            <Clock class="h-4 w-4" />
-            <span>Dibuat: {{ formatDate(news.created_at) }}</span>
-          </div>
-
-          <div v-if="news.updated_at" class="flex items-center gap-1">
-            <Clock class="h-4 w-4" />
-            <span>Diperbarui: {{ formatDate(news.updated_at) }}</span>
-          </div>
+  <div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <Button @click="goBack" variant="ghost" size="icon">
+          <ArrowLeft class="h-4 w-4" />
+        </Button>
+        <div>
+          <h1 class="text-2xl font-bold">Detail Petani</h1>
+          <p class="text-sm text-gray-600">Informasi lengkap tentang petani</p>
         </div>
       </div>
-
-      <div class="border-t border-gray-200"></div>
-
-      <div class="p-6">
-        <article class="prose max-w-none" v-html="news.content"></article>
-      </div>
-
-      <div v-if="news.attachments.length || news.link" class="border-t border-gray-200 p-6 ">
-        <div v-if="news.attachments.length" class="mb-4">
-          <h3 class="font-medium flex items-center gap-2 mb-2">
-            <Paperclip class="h-4 w-4" />
-            Lampiran
-          </h3>
-          <ul class="space-y-2 ml-6">
-            <li v-for="(file, i) in news.attachments" :key="i" class="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-                <line x1="10" y1="9" x2="8" y2="9" />
-              </svg>
-              <a :href="file.url" target="_blank" class="text-blue-600 hover:underline">{{ file.name }}</a>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="news.link" class="flex items-center gap-2">
-          <h3 class="font-medium flex items-center gap-2">
-            <LinkIcon class="h-4 w-4" />
-            Link Terkait:
-          </h3>
-          <a :href="news.link" target="_blank" class="text-blue-600 hover:underline">{{ news.link }}</a>
-        </div>
+      
+      <div class="flex items-center gap-2">
+        <Button @click="refreshUser" variant="outline" :disabled="userPending">
+          <RotateCcw class="h-4 w-4 mr-2" />
+          {{ userPending ? 'Memuat...' : 'Refresh' }}
+        </Button>
       </div>
     </div>
 
-    <div class="mt-6 flex justify-end gap-3">
-      <Button variant="outline" as-child>
-        <NuxtLink to="/news">Kembali</NuxtLink>
+    <!-- Loading State -->
+    <div v-if="userPending" class="flex items-center justify-center p-12">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <span class="ml-2">Memuat detail petani...</span>
+    </div>
+
+    <!-- Error State -->
+    <div v-else-if="userError" class="p-8 bg-red-50 border border-red-200 rounded-lg text-center">
+      <p class="text-red-600 font-medium">Terjadi kesalahan saat memuat data petani</p>
+      <p class="text-red-500 text-sm mt-1">{{ userError.message }}</p>
+      <Button @click="refreshUser" class="mt-4" variant="outline" size="sm">
+        Coba Lagi
       </Button>
-      <Button variant="default" as-child>
-        <NuxtLink :to="`/news/edit/${news.id}`">Edit Berita</NuxtLink>
-      </Button>
+    </div>
+
+    <!-- User Detail Content -->
+    <div v-else-if="userDetail" class="grid gap-6 md:grid-cols-3">
+      <!-- Profile Card -->
+      <div class="md:col-span-1">
+        <Card>
+          <CardHeader class="text-center pb-4">
+            <div class="flex justify-center mb-4">
+              <Avatar class="h-24 w-24">
+                <AvatarImage :src="userDetail.avatarUrl" :alt="userDetail.full_name" />
+                <AvatarFallback class="bg-green-100 text-green-700 text-xl">
+                  {{ getInitials(userDetail.full_name || 'User') }}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+            <CardTitle class="text-xl">{{ userDetail.full_name || 'Nama tidak tersedia' }}</CardTitle>
+            <CardDescription>{{ userDetail.username || 'Username tidak tersedia' }}</CardDescription>
+            
+            <!-- Status Badges -->
+            <div class="flex flex-wrap justify-center gap-2 mt-4">
+              <Badge 
+                :variant="userDetail.isActive ? 'default' : 'secondary'" 
+                :class="userDetail.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+              >
+                {{ userDetail.isActive ? 'Aktif' : 'Tidak Aktif' }}
+              </Badge>
+              
+              <Badge variant="outline" class="bg-blue-50 text-blue-700">
+                {{ userDetail.role || 'petani' }}
+              </Badge>
+              
+              <Badge v-if="userDetail.is_admin" variant="outline" class="bg-purple-50 text-purple-700">
+                Admin
+              </Badge>
+              
+              <Badge v-if="userDetail.isArchived" variant="outline" class="bg-orange-50 text-orange-700">
+                Diarsipkan
+              </Badge>
+            </div>
+          </CardHeader>
+          
+          <CardContent class="space-y-4">
+            <!-- Action Buttons -->
+            <div class="flex flex-col gap-2">
+              <Button variant="outline" class="w-full" disabled>
+                <Edit class="h-4 w-4 mr-2" />
+                Edit Profil
+              </Button>
+              
+              <Button 
+                v-if="!userDetail.isActive" 
+                @click="restoreUser" 
+                class="w-full bg-green-600 hover:bg-green-700"
+                :disabled="loading"
+              >
+                <UserCheck class="h-4 w-4 mr-2" />
+                {{ loading ? 'Memulihkan...' : 'Pulihkan Akun' }}
+              </Button>
+              
+              <AlertDialog v-model:open="deleteDialogOpen">
+                <AlertDialogTrigger as-child>
+                  <Button 
+                    v-if="userDetail.isActive" 
+                    variant="destructive" 
+                    class="w-full"
+                    :disabled="loading"
+                  >
+                    <Trash2 class="h-4 w-4 mr-2" />
+                    Hapus Petani
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Apakah Anda yakin ingin menghapus petani <strong>{{ userDetail.full_name }}</strong>? 
+                      Tindakan ini akan menonaktifkan akun petani (soft delete).
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Batal</AlertDialogCancel>
+                    <AlertDialogAction @click="deleteUser" class="bg-red-600 hover:bg-red-700">
+                      Hapus
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <!-- Information Cards -->
+      <div class="md:col-span-2 space-y-6">
+        <!-- Personal Information -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <User class="h-5 w-5" />
+              Informasi Pribadi
+            </CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <label class="text-sm font-medium text-gray-500">Nama Lengkap</label>
+                <p class="mt-1">{{ userDetail.full_name || 'Tidak tersedia' }}</p>
+              </div>
+              
+              <div>
+                <label class="text-sm font-medium text-gray-500">Username</label>
+                <p class="mt-1">{{ userDetail.username || 'Tidak tersedia' }}</p>
+              </div>
+              
+              <div>
+                <label class="text-sm font-medium text-gray-500">Email</label>
+                <p class="mt-1 flex items-center gap-2">
+                  <Mail class="h-4 w-4 text-gray-400" />
+                  {{ userDetail.email || 'Tidak tersedia' }}
+                </p>
+              </div>
+              
+              <div>
+                <label class="text-sm font-medium text-gray-500">No. Telepon</label>
+                <p class="mt-1 flex items-center gap-2">
+                  <Phone class="h-4 w-4 text-gray-400" />
+                  {{ userDetail.phone || 'Tidak tersedia' }}
+                </p>
+              </div>
+              
+              <div>
+                <label class="text-sm font-medium text-gray-500">Tanggal Lahir</label>
+                <p class="mt-1 flex items-center gap-2">
+                  <Calendar class="h-4 w-4 text-gray-400" />
+                  {{ formatDateOnly(userDetail.birth_date) }}
+                </p>
+              </div>
+              
+              <div>
+                <label class="text-sm font-medium text-gray-500">Website</label>
+                <p class="mt-1 flex items-center gap-2">
+                  <Globe class="h-4 w-4 text-gray-400" />
+                  {{ userDetail.website || 'Tidak tersedia' }}
+                </p>
+              </div>
+            </div>
+            
+            <Separator />
+            
+            <div>
+              <label class="text-sm font-medium text-gray-500">Alamat</label>
+              <p class="mt-1 flex items-start gap-2">
+                <MapPin class="h-4 w-4 text-gray-400 mt-0.5" />
+                {{ userDetail.address || 'Tidak tersedia' }}
+              </p>
+            </div>
+            
+            <div>
+              <label class="text-sm font-medium text-gray-500">Bio</label>
+              <p class="mt-1 flex items-start gap-2">
+                <FileText class="h-4 w-4 text-gray-400 mt-0.5" />
+                {{ userDetail.bio || 'Tidak tersedia' }}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- Account Status -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <UserCheck class="h-5 w-5" />
+              Status Akun
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <label class="text-sm font-medium text-gray-500">Status</label>
+                <div class="mt-1">
+                  <Badge 
+                    :variant="userDetail.isActive ? 'default' : 'secondary'" 
+                    :class="userDetail.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+                  >
+                    {{ userDetail.isActive ? 'Aktif' : 'Tidak Aktif' }}
+                  </Badge>
+                </div>
+              </div>
+              
+              <div>
+                <label class="text-sm font-medium text-gray-500">Role</label>
+                <div class="mt-1">
+                  <Badge variant="outline" class="bg-blue-50 text-blue-700">
+                    {{ userDetail.role || 'petani' }}
+                  </Badge>
+                </div>
+              </div>
+              
+              <div>
+                <label class="text-sm font-medium text-gray-500">Admin</label>
+                <div class="mt-1">
+                  <Badge 
+                    :variant="userDetail.is_admin ? 'default' : 'secondary'"
+                    :class="userDetail.is_admin ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'"
+                  >
+                    {{ userDetail.is_admin ? 'Ya' : 'Tidak' }}
+                  </Badge>
+                </div>
+              </div>
+              
+              <div>
+                <label class="text-sm font-medium text-gray-500">Diarsipkan</label>
+                <div class="mt-1">
+                  <Badge 
+                    :variant="userDetail.isArchived ? 'default' : 'secondary'"
+                    :class="userDetail.isArchived ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'"
+                  >
+                    {{ userDetail.isArchived ? 'Ya' : 'Tidak' }}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- Timestamps -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <Calendar class="h-5 w-5" />
+              Riwayat Waktu
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div class="space-y-3">
+              <div>
+                <label class="text-sm font-medium text-gray-500">Bergabung</label>
+                <p class="mt-1 text-sm">{{ formatDate(userDetail.created_at) }}</p>
+              </div>
+              
+              <div>
+                <label class="text-sm font-medium text-gray-500">Terakhir Diperbarui</label>
+                <p class="mt-1 text-sm">{{ formatDate(userDetail.updated_at) }}</p>
+              </div>
+              
+              <div v-if="userDetail.deleted_at">
+                <label class="text-sm font-medium text-gray-500">Dihapus</label>
+                <p class="mt-1 text-sm text-red-600">{{ formatDate(userDetail.deleted_at) }}</p>
+              </div>
+              
+              <div v-if="userDetail.archived_at">
+                <label class="text-sm font-medium text-gray-500">Diarsipkan</label>
+                <p class="mt-1 text-sm text-orange-600">{{ formatDate(userDetail.archived_at) }}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- Debug Information -->
+        <details class="bg-gray-50 p-4 rounded-lg">
+          <summary class="cursor-pointer font-medium text-gray-700 mb-2">
+            Debug: Raw User Data
+          </summary>
+          <pre class="text-xs bg-white p-3 rounded border overflow-auto max-h-60">{{ JSON.stringify(userDetail, null, 2) }}</pre>
+        </details>
+      </div>
     </div>
   </div>
 </template>

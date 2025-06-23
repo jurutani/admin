@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { Eye, MoreHorizontal, Shield, UserCheck, Users2 } from 'lucide-vue-next'
+import { Eye, MoreHorizontal, Users2, UserCheck, Trash2, MapPin, Phone, Calendar, Filter, RotateCcw } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +15,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { toast } from '@/components/ui/toast'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import {
   Table,
   TableBody,
@@ -25,16 +35,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { toast } from '@/components/ui/toast'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 const supabase = useSupabaseClient()
+const router = useRouter()
 
 // Reactive states
-const activeTab = ref('expert')
 const refreshKey = ref(0)
-const detailDialogOpen = ref(false)
-const selectedUser = ref<any>(null)
+const deleteDialogOpen = ref(false)
+const userToDelete = ref(null)
+
+// Filter states
+const statusFilter = ref('all') // 'all', 'active', 'deleted'
+const showDeletedUsers = ref(false) // Toggle untuk menampilkan user yang dihapus
 
 // Date range filtering
 const dateRange = ref<DateRange | null>(null)
@@ -51,14 +64,33 @@ const filterEndDate = computed(() => {
   return dateRange.value.end.toDate('UTC').toISOString()
 })
 
-// Fetch experts data
-const { data: experts, pending: expertsPending, error: expertsError, refresh: refreshExperts } = await useAsyncData(
-  `experts-${refreshKey.value}`,
-  async () => {
+// Function to get avatar URL from bucket
+function getAvatarUrl(avatarPath: string | null) {
+  if (!avatarPath) return null
+  
+  const { data } = supabase.storage
+    .from('avatars')
+    .getPublicUrl(`/${avatarPath}`)
+  
+  return data.publicUrl
+}
+
+// Fetch petani users with profiles
+async function fetchPetaniUsers() {
+  try {
     let query = supabase
-      .from('experts')
+      .from('profiles')
       .select('*')
+      .eq('role', 'petani')
       .order('created_at', { ascending: false })
+
+    // Filter berdasarkan status
+    if (statusFilter.value === 'active') {
+      query = query.is('deleted_at', null)
+    } else if (statusFilter.value === 'deleted') {
+      query = query.not('deleted_at', 'is', null)
+    }
+    // Jika 'all', tidak ada filter tambahan
 
     if (filterStartDate.value) {
       query = query.gte('created_at', filterStartDate.value)
@@ -70,50 +102,68 @@ const { data: experts, pending: expertsPending, error: expertsError, refresh: re
     const { data, error } = await query
 
     if (error) {
+      console.error('Error fetching petani users:', error)
       throw error
     }
-    return data || []
-  },
+
+    // Process data to include avatar URLs
+    const processedData = (data || []).map(user => ({
+      ...user,
+      email: user.email || '',
+      avatarUrl: getAvatarUrl(user.avatar_url),
+      created_at: user.created_at,
+      isActive: !user.deleted_at // Status aktif berdasarkan deleted_at
+    }))
+
+    return processedData
+  } catch (error) {
+    console.error('Error in fetchPetaniUsers:', error)
+    throw error
+  }
+}
+
+// Fetch petani data
+const { data: petaniUsers, pending: petaniPending, error: petaniError, refresh: refreshPetani } = await useAsyncData(
+  `petani-users-${refreshKey.value}`,
+  fetchPetaniUsers,
   {
-    watch: [filterStartDate, filterEndDate, refreshKey],
+    watch: [filterStartDate, filterEndDate, refreshKey, statusFilter],
   },
 )
 
-// Fetch instructors data
-const { data: instructors, pending: instructorsPending, error: instructorsError, refresh: refreshInstructors } = await useAsyncData(
-  `instructors-${refreshKey.value}`,
-  async () => {
-    let query = supabase
-      .from('instructors')
-      .select('*')
-      .order('created_at', { ascending: false })
+// Computed values for stats
+const allPetaniUsers = computed(() => petaniUsers.value || [])
 
-    if (filterStartDate.value) {
-      query = query.gte('created_at', filterStartDate.value)
-    }
-    if (filterEndDate.value) {
-      query = query.lte('created_at', filterEndDate.value)
-    }
+const totalPetaniCount = computed(() => {
+  return allPetaniUsers.value.filter(user => user.isActive).length
+})
 
-    const { data, error } = await query
+const totalDeletedCount = computed(() => {
+  return allPetaniUsers.value.filter(user => !user.isActive).length
+})
 
-    if (error) {
-      throw error
-    }
-    return data || []
-  },
-  {
-    watch: [filterStartDate, filterEndDate, refreshKey],
-  },
-)
+const totalAllCount = computed(() => {
+  return allPetaniUsers.value.length
+})
+
+const filteredCount = computed(() => {
+  if (statusFilter.value === 'active') return totalPetaniCount.value
+  if (statusFilter.value === 'deleted') return totalDeletedCount.value
+  return totalAllCount.value
+})
 
 // Functions
 function refreshAllData() {
   refreshKey.value++
 }
 
-function handleDateRangeChange(newRange: DateRange | null) {
-  dateRange.value = newRange
+function resetFilters() {
+  statusFilter.value = 'all'
+  dateRange.value = null
+}
+
+function setStatusFilter(status: string) {
+  statusFilter.value = status
 }
 
 function formatDate(date: string) {
@@ -124,41 +174,83 @@ function formatDate(date: string) {
   })
 }
 
-async function updateUserStatus(userId: string, status: 'active' | 'inactive' | 'pending') {
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+function viewUserDetail(userId: string) {
+  router.push(`/users/${userId}`)
+}
+
+function confirmDelete(user: any) {
+  userToDelete.value = user
+  deleteDialogOpen.value = true
+}
+
+async function deleteUser() {
+  if (!userToDelete.value) return
+
+  try {
+    const userId = userToDelete.value.id
+
+    // Soft delete: update deleted_at di profiles
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', userId)
+
+    if (profileError) {
+      throw profileError
+    }
+
+    toast({
+      title: 'Berhasil',
+      description: 'Petani berhasil dihapus dari sistem (soft delete)',
+    })
+
+    refreshAllData()
+
+  } catch (error) {
+    console.error('Error soft deleting user:', error)
+    toast({
+      title: 'Gagal',
+      description: 'Terjadi kesalahan saat menghapus petani',
+      variant: 'destructive',
+    })
+  } finally {
+    deleteDialogOpen.value = false
+    userToDelete.value = null
+  }
+}
+
+async function restoreUser(userId: string) {
   try {
     const { error } = await supabase
       .from('profiles')
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ deleted_at: null })
       .eq('id', userId)
 
     if (error) {
       throw error
     }
 
-    // Update local data
-    const updateInList = (list: any[]) => {
-      const userIndex = list.findIndex(user => user.id === userId)
-      if (userIndex !== -1) {
-        list[userIndex].status = status
-      }
-    }
-
-    if (experts.value) {
-      updateInList(experts.value)
-    }
-    if (instructors.value)
-      updateInList(instructors.value)
-
     toast({
-      title: 'Status diperbarui',
-      description: `Status user telah diubah menjadi "${status}"`,
+      title: 'Berhasil',
+      description: 'Petani berhasil dipulihkan',
     })
-  }
-  catch (error) {
-    console.error('Error updating user status:', error)
+
+    refreshAllData()
+
+  } catch (error) {
+    console.error('Error restoring user:', error)
     toast({
-      title: 'Error',
-      description: 'Gagal memperbarui status user',
+      title: 'Gagal',
+      description: 'Terjadi kesalahan saat memulihkan petani',
       variant: 'destructive',
     })
   }
@@ -167,273 +259,293 @@ async function updateUserStatus(userId: string, status: 'active' | 'inactive' | 
 
 <template>
   <div class="space-y-6">
-    <!-- Stats Cards -->
+    <!-- Filter Cards -->
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <Card>
-        <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle class="text-sm font-medium">
-            Expert Aktif
-          </CardTitle>
-          <UserCheck class="h-4 w-4 text-green-600" />
-        </CardHeader>
-        <CardContent>
-          <div class="text-2xl font-bold text-green-600">
-            {{ "1" }}
+      <!-- Card Semua Petani -->
+      <div 
+        class="bg-white p-6 rounded-lg border cursor-pointer transition-all duration-200 hover:shadow-md"
+        :class="statusFilter === 'all' ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:border-blue-300'"
+        @click="setStatusFilter('all')"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-gray-600">Semua Petani</p>
+            <p class="text-2xl font-bold text-gray-800">{{ totalAllCount }}</p>
+            <p class="text-xs text-gray-500 mt-1">Total keseluruhan</p>
           </div>
-          <p class="text-xs text-muted-foreground">
-            Siap memberikan konsultasi
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle class="text-sm font-medium">Instructor Aktif</CardTitle>
-          <UserCheck class="h-4 w-4 text-blue-600" />
-        </CardHeader>
-        <CardContent>
-          <div class="text-2xl font-bold text-blue-600">
-            {{ "1" }}
-          </div>
-          <p class="text-xs text-muted-foreground">
-            Siap mengajar petani
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-
-    <!-- Tabs Content -->
-    <Tabs v-model="activeTab" class="space-y-4">
-      <div class="flex items-center justify-between">
-        <TabsList>
-          <TabsTrigger value="expert">
-            <Shield class="h-4 w-4 mr-2" />
-            Expert ({{ "2" }})
-          </TabsTrigger>
-          <TabsTrigger value="instructor">
-            <Users2 class="h-4 w-4 mr-2" />
-            Instructor ({{ "2" }})
-          </TabsTrigger>
-        </TabsList>
-
-        <div class="flex gap-2">
-          <Button
-            v-if="activeTab === 'expert'"
-            @click="$router.push('/')"
-          >
-            + Tambah Expert
-          </Button>
-          <Button
-            v-else
-            @click="$router.push('/')"
-          >
-            + Tambah Instructor
-          </Button>
+          <Users2 class="h-8 w-8 text-gray-600" />
+        </div>
+        <div v-if="statusFilter === 'all'" class="mt-2">
+          <Badge variant="default" class="bg-blue-100 text-blue-700">Filter Aktif</Badge>
         </div>
       </div>
 
-      <!-- Expert Tab -->
-      <TabsContent value="expert" class="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Daftar Expert</CardTitle>
-            <CardDescription>Kelola expert yang memberikan konsultasi kepada petani</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div v-if="expertsPending" class="flex items-center justify-center p-8">
-              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              <span class="ml-2">Memuat data expert...</span>
-            </div>
+      <!-- Card Petani Aktif -->
+      <div 
+        class="bg-white p-6 rounded-lg border cursor-pointer transition-all duration-200 hover:shadow-md"
+        :class="statusFilter === 'active' ? 'ring-2 ring-green-500 bg-green-50' : 'hover:border-green-300'"
+        @click="setStatusFilter('active')"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-gray-600">Petani Aktif</p>
+            <p class="text-2xl font-bold text-green-600">{{ totalPetaniCount }}</p>
+            <p class="text-xs text-gray-500 mt-1">Status aktif</p>
+          </div>
+          <UserCheck class="h-8 w-8 text-green-600" />
+        </div>
+        <div v-if="statusFilter === 'active'" class="mt-2">
+          <Badge variant="default" class="bg-green-100 text-green-700">Filter Aktif</Badge>
+        </div>
+      </div>
+      
+      <!-- Card Petani Dihapus -->
+      <div 
+        class="bg-white p-6 rounded-lg border cursor-pointer transition-all duration-200 hover:shadow-md"
+        :class="statusFilter === 'deleted' ? 'ring-2 ring-red-500 bg-red-50' : 'hover:border-red-300'"
+        @click="setStatusFilter('deleted')"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-gray-600">Petani Dihapus</p>
+            <p class="text-2xl font-bold text-red-600">{{ totalDeletedCount }}</p>
+            <p class="text-xs text-gray-500 mt-1">Status tidak aktif</p>
+          </div>
+          <Trash2 class="h-8 w-8 text-red-600" />
+        </div>
+        <div v-if="statusFilter === 'deleted'" class="mt-2">
+          <Badge variant="default" class="bg-red-100 text-red-700">Filter Aktif</Badge>
+        </div>
+      </div>
 
-            <div v-else-if="expertsError" class="p-4 bg-red-50 border border-red-200 rounded-md">
-              <p class="text-red-600">Terjadi kesalahan saat memuat data expert</p>
-            </div>
+      <!-- Card Filter Status -->
+      <div class="bg-white p-6 rounded-lg border">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-gray-600">Data Ditampilkan</p>
+            <p class="text-2xl font-bold text-purple-600">{{ filteredCount }}</p>
+            <p class="text-xs text-gray-500 mt-1">
+              {{ statusFilter === 'all' ? 'Semua data' : 
+                 statusFilter === 'active' ? 'Hanya aktif' : 'Hanya dihapus' }}
+            </p>
+          </div>
+          <Filter class="h-8 w-8 text-purple-600" />
+        </div>
+      </div>
+    </div>
 
-            <div v-else class="border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead class="w-[200px]">Expert</TableHead>
-                    <TableHead>Spesialisasi</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Bergabung</TableHead>
-                    <TableHead class="text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow v-if="'0' === 0">
-                    <TableCell colspan="6" class="text-center text-muted-foreground py-8">
-                      Belum ada expert terdaftar
-                    </TableCell>
-                  </TableRow>
-                  <TableRow v-for="expert in experts" :key="expert.id">
-                    <TableCell>
-                      <div class="flex items-center gap-3">
-                        <Avatar class="h-10 w-10">
-                          <AvatarImage />
-                          <AvatarFallback>{{ 'nama' }}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div class="font-medium">{{ expert.full_name }}</div>
-                          <div class="text-sm text-muted-foreground">{{ expert.email }}</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div class="text-sm">
-                        {{ expert.note || 'Belum ditentukan' }}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        :value="expert.status"
-                        @update:value="(v: string) => updateUserStatus(expert.id, v as 'active' | 'inactive' | 'pending')"
-                      >
-                        <SelectTrigger class="w-32">
-                          <SelectValue>
-                            <Badge variant="default">
-                              {{ expert.status }}
-                            </Badge>
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="active">
-                            <Badge variant="default">
-                              active
-                            </Badge>
-                          </SelectItem>
-                          <SelectItem value="pending">
-                            <Badge variant="secondary">
-                              pending
-                            </Badge>
-                          </SelectItem>
-                          <SelectItem value="inactive">
-                            <Badge variant="destructive">
-                              inactive
-                            </Badge>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>{{ formatDate(expert.created_at) }}</TableCell>
-                    <TableCell class="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger as-child>
-                          <Button variant="default" size="icon">
-                            <MoreHorizontal class="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem class="flex cursor-pointer items-center gap-2">
-                            <Eye class="h-4 w-4" />
-                            Lihat Detail
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+    <!-- Controls -->
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <h1 class="text-2xl font-bold">Daftar Petani</h1>
+        
+        <!-- Status Filter Badge -->
+        <div class="flex items-center gap-2">
+          <Badge 
+            :variant="statusFilter === 'all' ? 'default' : 'secondary'"
+            :class="statusFilter === 'all' ? 'bg-blue-100 text-blue-700' :
+                   statusFilter === 'active' ? 'bg-green-100 text-green-700' :
+                   'bg-red-100 text-red-700'"
+          >
+            {{ statusFilter === 'all' ? 'Semua Data' : 
+               statusFilter === 'active' ? 'Hanya Aktif' : 'Hanya Dihapus' }}
+          </Badge>
+          
+          <!-- Reset Filter Button -->
+          <Button 
+            v-if="statusFilter !== 'all'" 
+            @click="resetFilters" 
+            variant="ghost" 
+            size="sm"
+            class="text-gray-500 hover:text-gray-700"
+          >
+            <RotateCcw class="h-4 w-4 mr-1" />
+            Reset
+          </Button>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <!-- Status Filter Dropdown -->
+        <Select v-model="statusFilter">
+          <SelectTrigger class="w-[180px]">
+            <SelectValue placeholder="Filter Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Status</SelectItem>
+            <SelectItem value="active">Hanya Aktif</SelectItem>
+            <SelectItem value="deleted">Hanya Dihapus</SelectItem>
+          </SelectContent>
+        </Select>
+        
+        <Button @click="refreshAllData" variant="outline">
+          Refresh Data
+        </Button>
+      </div>
+    </div>
 
-      <!-- Instructor Tab -->
-      <TabsContent value="instructor" class="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Daftar Instructor</CardTitle>
-            <CardDescription>Kelola instructor yang mengajar dan melatih petani</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div v-if="instructorsPending" class="flex items-center justify-center p-8">
-              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              <span class="ml-2">Memuat data instructor...</span>
-            </div>
+    <!-- Debug Data Preview -->
+    <details class="bg-gray-50 p-4 rounded-lg">
+      <summary class="cursor-pointer font-medium text-gray-700 mb-2">
+        Debug: Preview Data ({{ petaniUsers?.length || 0 }} records) - Filter: {{ statusFilter }}
+      </summary>
+      <div class="text-xs mb-2 space-y-1">
+        <p><strong>Total Semua:</strong> {{ totalAllCount }}</p>
+        <p><strong>Total Aktif:</strong> {{ totalPetaniCount }}</p>
+        <p><strong>Total Dihapus:</strong> {{ totalDeletedCount }}</p>
+        <p><strong>Filter Saat Ini:</strong> {{ statusFilter }}</p>
+        <p><strong>Data Ditampilkan:</strong> {{ filteredCount }}</p>
+      </div>
+      <pre class="text-xs bg-white p-3 rounded border overflow-auto max-h-60">{{ JSON.stringify(petaniUsers, null, 2) }}</pre>
+    </details>
 
-            <div v-else-if="instructorsError" class="p-4 bg-red-50 border border-red-200 rounded-md">
-              <p class="text-red-600">Terjadi kesalahan saat memuat data instructor</p>
-            </div>
+    <!-- Loading State -->
+    <div v-if="petaniPending" class="flex items-center justify-center p-8">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <span class="ml-2">Memuat data petani...</span>
+    </div>
 
-            <div v-else class="border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead class="w-[200px]">Instructor</TableHead>
-                    <TableHead>Spesialisasi</TableHead>
-                    <TableHead>Bergabung</TableHead>
-                    <TableHead class="text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow v-if="!instructors || instructors.length === 0">
-                    <TableCell colspan="6" class="text-center text-muted-foreground py-8">
-                      Belum ada instructor terdaftar
-                    </TableCell>
-                  </TableRow>
-                  <TableRow v-for="instructor in instructors" :key="instructor.id">
-                    <TableCell>
-                      <div class="flex items-center gap-3">
-                        <Avatar class="h-10 w-10">
-                          <AvatarFallback>{{ '1' }}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div class="font-medium">{{ '1' }}</div>
-                          <div class="text-sm text-muted-foreground">{{ '1' }}</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div class="text-sm">
-                        {{ '1' }}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Select>
-                        <SelectTrigger class="w-32">
-                          <SelectValue>
-                            <Badge variant="default">
-                              1
-                            </Badge>
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="active">
-                            <Badge variant="default">active</Badge>
-                          </SelectItem>
-                          <SelectItem value="pending">
-                            <Badge variant="secondary">pending</Badge>
-                          </SelectItem>
-                          <SelectItem value="inactive">
-                            <Badge variant="destructive">inactive</Badge>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>{{ formatDate(instructor.created_at) }}</TableCell>
-                    <TableCell class="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger as-child>
-                          <Button variant="default" size="icon">
-                            <MoreHorizontal class="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem class="flex cursor-pointer items-center gap-2">
-                            <Eye class="h-4 w-4" />
-                            Lihat Detail
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
-    </Tabs>
+    <!-- Error State -->
+    <div v-else-if="petaniError" class="p-4 bg-red-50 border border-red-200 rounded-md">
+      <p class="text-red-600">Terjadi kesalahan saat memuat data petani</p>
+      <Button @click="refreshAllData" class="mt-2" variant="outline" size="sm">
+        Coba Lagi
+      </Button>
+    </div>
+
+    <!-- Table -->
+    <div v-else class="bg-white rounded-lg border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead class="w-[300px]">Petani</TableHead>
+            <TableHead>Lokasi</TableHead>
+            <TableHead>No. Telepon</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Bergabung</TableHead>
+            <TableHead>Dihapus</TableHead>
+            <TableHead class="text-right">Aksi</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow v-if="!petaniUsers || petaniUsers.length === 0">
+            <TableCell colspan="7" class="text-center text-gray-500 py-8">
+              <div class="flex flex-col items-center gap-2">
+                <Users2 class="h-12 w-12 text-gray-400" />
+                <p>
+                  {{ statusFilter === 'deleted' ? 'Tidak ada petani yang dihapus' : 
+                     statusFilter === 'active' ? 'Tidak ada petani aktif' :
+                     'Belum ada petani terdaftar dalam sistem' }}
+                </p>
+              </div>
+            </TableCell>
+          </TableRow>
+          
+          <TableRow v-for="petani in petaniUsers" :key="petani.id" class="hover:bg-gray-50">
+            <TableCell>
+              <div class="flex items-center gap-3">
+                <Avatar class="h-10 w-10">
+                  <AvatarImage :src="petani.avatarUrl" :alt="petani.full_name" />
+                  <AvatarFallback class="bg-green-100 text-green-700">
+                    {{ getInitials(petani.full_name || 'User') }}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div class="font-medium">{{ petani.full_name || 'Nama tidak tersedia' }}</div>
+                  <div class="text-sm text-gray-500">{{ petani.email }}</div>
+                </div>
+              </div>
+            </TableCell>
+            
+            <TableCell>
+              <div class="text-sm">
+                {{ petani.location || petani.address || 'Belum ditentukan' }}
+              </div>
+            </TableCell>
+            
+            <TableCell>
+              <div class="text-sm">
+                {{ petani.phone_number || petani.phone || 'Belum diisi' }}
+              </div>
+            </TableCell>
+            
+            <TableCell>
+              <Badge 
+                :variant="petani.isActive ? 'default' : 'secondary'" 
+                :class="petani.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+              >
+                {{ petani.isActive ? 'Aktif' : 'Tidak Aktif' }}
+              </Badge>
+            </TableCell>
+            
+            <TableCell>
+              <div class="text-sm">{{ formatDate(petani.created_at) }}</div>
+            </TableCell>
+            
+            <TableCell>
+              <div class="text-sm">
+                {{ petani.deleted_at ? formatDate(petani.deleted_at) : '-' }}
+              </div>
+            </TableCell>
+            
+            <TableCell class="text-right">
+              <DropdownMenu>
+                <DropdownMenuTrigger as-child>
+                  <Button variant="ghost" size="icon">
+                    <MoreHorizontal class="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem 
+                    class="flex cursor-pointer items-center gap-2"
+                    @click="viewUserDetail(petani.id)"
+                  >
+                    <Eye class="h-4 w-4" />
+                    Lihat Detail
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuItem 
+                    v-if="!petani.isActive"
+                    class="flex cursor-pointer items-center gap-2 text-green-600 focus:text-green-600"
+                    @click="restoreUser(petani.id)"
+                  >
+                    <UserCheck class="h-4 w-4" />
+                    Pulihkan
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuItem 
+                    v-if="petani.isActive"
+                    class="flex cursor-pointer items-center gap-2 text-red-600 focus:text-red-600"
+                    @click="confirmDelete(petani)"
+                  >
+                    <Trash2 class="h-4 w-4" />
+                    Hapus
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+
+    <!-- Delete Confirmation Dialog -->
+    <AlertDialog v-model:open="deleteDialogOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+          <AlertDialogDescription>
+            Apakah Anda yakin ingin menghapus petani <strong>{{ userToDelete?.full_name }}</strong>? 
+            Tindakan ini akan menonaktifkan akun petani (soft delete).
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Batal</AlertDialogCancel>
+          <AlertDialogAction @click="deleteUser" class="bg-red-600 hover:bg-red-700">
+            Hapus
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>

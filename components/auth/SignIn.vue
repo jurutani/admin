@@ -69,9 +69,6 @@ async function onSubmit(event: Event) {
     <div class="grid gap-2">
       <div class="flex items-center">
         <Label for="password">Password</Label>
-        <NuxtLink to="/forgot-password" class="ml-auto inline-block text-sm underline">
-          Forgot your password?
-        </NuxtLink>
       </div>
       <PasswordInput id="password" v-model="password" :disabled="isLoading" />
     </div>
@@ -80,5 +77,4 @@ async function onSubmit(event: Event) {
       Login
     </Button>
   </form>
-
 </template>
