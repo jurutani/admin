@@ -2,6 +2,7 @@
 import { Loader2, Plus, Eye, Edit, Trash2, ChevronLeft, ChevronRight, AlertCircle, Clock, CheckCircle2, XCircle, Store, ExternalLink, Phone } from 'lucide-vue-next'
 import { ref, onMounted, watch, computed } from 'vue'
 import FormMarket from '~/components/Dialog/FormMarket.vue'
+import CategoryMarket from '~/components/Filters/CategoryMarket.vue'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Button } from '~/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table'
@@ -53,16 +54,6 @@ const statuses = [
     icon: XCircle,
     color: 'red',
   },
-]
-
-// Categories for markets
-const categories = [
-  'Hasil Pertanian',
-  'Peralatan Pertanian',
-  'Pupuk & Pestisida',
-  'Bibit & Benih',
-  'Produk Olahan',
-  'Lainnya'
 ]
 
 // Status counts
@@ -310,27 +301,8 @@ function hasLinks(links: any) {
       </Button>
     </div>
     
-    <!-- Category Filter -->
-    <div class="flex flex-wrap gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        :class="selectedCategory === '' ? 'bg-primary text-primary-foreground' : ''"
-        @click="selectedCategory = ''"
-      >
-        Semua Kategori
-      </Button>
-      <Button
-        v-for="category in categories"
-        :key="category"
-        variant="outline"
-        size="sm"
-        :class="selectedCategory === category ? 'bg-primary text-primary-foreground' : ''"
-        @click="selectedCategory = category"
-      >
-        {{ category }}
-      </Button>
-    </div>
+    <!-- Category Filter Component -->
+    <CategoryMarket v-model="selectedCategory" />
     
     <!-- Status Filter Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">

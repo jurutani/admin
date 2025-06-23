@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Loader2, Plus, Eye, Edit, Trash2, ChevronLeft, ChevronRight, AlertCircle, Clock, CheckCircle2, XCircle } from 'lucide-vue-next'
+import { Loader2, Plus, Eye, Edit, Trash2, ChevronLeft, ChevronRight, AlertCircle, Clock, CheckCircle2, XCircle, Newspaper, Calendar, User } from 'lucide-vue-next'
 import { ref, onMounted, watch, computed } from 'vue'
 import FormNews from '~/components/Dialog/FormNews.vue'
+import CategoryNews from '~/components/Filters/CategoryNew.vue'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Button } from '~/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table'
@@ -73,12 +74,21 @@ const statusCounts = computed(() => {
   return counts
 })
 
-// Filtered news based on status
+// Filtered news based on status and category
 const filteredNews = computed(() => {
-  if (selectedStatus.value === 'all') {
-    return allNews.value
+  let filtered = allNews.value
+  
+  // Filter by status
+  if (selectedStatus.value !== 'all') {
+    filtered = filtered.filter(news => news.status_news === selectedStatus.value)
   }
-  return allNews.value.filter(news => news.status_news === selectedStatus.value)
+  
+  // Filter by category
+  if (selectedCategory.value && selectedCategory.value !== '__all__') {
+    filtered = filtered.filter(news => news.category === selectedCategory.value)
+  }
+  
+  return filtered
 })
 
 // Paginated news
@@ -105,7 +115,6 @@ const paginationInfo = computed(() => {
 
 watch([selectedCategory, selectedStatus], async () => {
   currentPage.value = 1
-  await fetchNews()
 })
 
 onMounted(async () => {
@@ -119,10 +128,6 @@ async function fetchNews() {
       .from('news')
       .select('*')
       .order('created_at', { ascending: false })
-    
-    if (selectedCategory.value && selectedCategory.value !== '__all__') {
-      query = query.eq('category', selectedCategory.value)
-    }
 
     const { data, error } = await query
 
@@ -245,19 +250,27 @@ function getStatusBadgeColor(status: string) {
     default: return 'bg-gray-100 text-gray-800 border-gray-300'
   }
 }
+
+function truncateText(text: string, maxLength: number = 100) {
+  if (!text) return '-'
+  return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
+}
 </script>
 
 <template>
   <div class="p-6 space-y-6">
     <div class="flex justify-between items-center">
-      <h1 class="text-2xl font-bold">Data Berita</h1>
+      <div class="flex items-center space-x-2">
+        <Newspaper class="h-6 w-6" />
+        <h1 class="text-2xl font-bold">Data Berita</h1>
+      </div>
       <Button @click="openAddDialog">
         <Plus class="h-4 w-4 mr-2" />
         Tambah Berita
       </Button>
     </div>
     
-    <!-- Category Filter (keeping original) -->
+    <!-- Category Filter Component -->
     <CategoryNews v-model="selectedCategory" />
     
     <!-- Status Filter Cards -->
@@ -265,11 +278,12 @@ function getStatusBadgeColor(status: string) {
       <Card
         v-for="status in statuses"
         :key="status.key"
-        class="cursor-pointer border-l-4 border-1-bold transition-all hover:shadow-md"
+        class="cursor-pointer transition-all hover:shadow-md border-l-4"
         :class="[
           selectedStatus === status.key
-            ? 'ring-2 ring-gray-500'
+            ? `ring-2 ring-${status.color}-500`
             : '',
+          `border-l-${status.color}-500`
         ]"
         @click="selectedStatus = status.key"
       >
@@ -280,7 +294,7 @@ function getStatusBadgeColor(status: string) {
           <component :is="status.icon" class="w-4 h-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <p>
+          <p class="text-2xl font-bold">
             {{ statusCounts[status.key] }}
           </p>
         </CardContent>
@@ -295,9 +309,9 @@ function getStatusBadgeColor(status: string) {
       <Table v-else>
         <TableHeader>
           <TableRow>
-            <TableHead>Judul</TableHead>
-            <TableHead>Sub Judul</TableHead>
+            <TableHead>Judul Berita</TableHead>
             <TableHead>Kategori</TableHead>
+            <TableHead>Penulis</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Dibuat</TableHead>
             <TableHead>Diperbarui</TableHead>
@@ -306,19 +320,27 @@ function getStatusBadgeColor(status: string) {
         </TableHeader>
         <TableBody>
           <TableRow v-if="paginatedNews.length === 0">
-            <TableCell colspan="7" class="text-center py-8 text-muted-foreground">
+            <TableCell colspan="8" class="text-center py-8 text-muted-foreground">
               Tidak ada data berita
             </TableCell>
           </TableRow>
           <TableRow v-for="news in paginatedNews" :key="news.id">
             <TableCell class="font-medium">
-              {{ news.title }}
+              <div>
+                <p class="font-semibold">{{ news.title }}</p>
+                <p class="text-sm text-muted-foreground line-clamp-2">
+                  {{ truncateText(news.sub_title || news.content) }}
+                </p>
+              </div>
             </TableCell>
             <TableCell>
-              {{ news.sub_title || '-' }}
+              <Badge variant="secondary">{{ news.category }}</Badge>
             </TableCell>
             <TableCell>
-              {{ news.category }}
+              <div class="flex items-center space-x-2">
+                <User class="h-4 w-4 text-muted-foreground" />
+                <span class="text-sm">{{ news.author || 'Admin' }}</span>
+              </div>
             </TableCell>
             <TableCell>
               <div class="flex items-center space-x-2">
@@ -341,10 +363,16 @@ function getStatusBadgeColor(status: string) {
               </div>
             </TableCell>
             <TableCell>
-              {{ formatDate(news.created_at) }}
+              <div class="flex items-center space-x-1">
+                <Calendar class="h-3 w-3 text-muted-foreground" />
+                <span class="text-sm">{{ formatDate(news.created_at) }}</span>
+              </div>
             </TableCell>
             <TableCell>
-              {{ formatDate(news.updated_at) }}
+              <div class="flex items-center space-x-1">
+                <Calendar class="h-3 w-3 text-muted-foreground" />
+                <span class="text-sm">{{ formatDate(news.updated_at) }}</span>
+              </div>
             </TableCell>
             <TableCell class="text-right">
               <div class="flex justify-end space-x-2">
@@ -454,3 +482,12 @@ function getStatusBadgeColor(status: string) {
     </AlertDialog>
   </div>
 </template>
+
+<style scoped>
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+</style>
