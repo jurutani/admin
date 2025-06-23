@@ -35,6 +35,6 @@ export const useToast = () => {
   return {
     toasts: readonly(toasts),
     showToast,
-    removeToast
+    removeToast,
   }
 }

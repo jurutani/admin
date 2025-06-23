@@ -1,24 +1,41 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useToast } from '@/components/ui/toast'
+import { useAuth } from '@/composables/useAuth'
 import { Loader2 } from 'lucide-vue-next'
 import PasswordInput from '~/components/PasswordInput.vue'
 
-const email = ref('example@gmail.com')
-const password = ref('password')
+const email = ref('')
+const password = ref('')
 const isLoading = ref(false)
 
-function onSubmit(event: Event) {
+const { login } = useAuth()
+const { toast } = useToast()
+
+async function onSubmit(event: Event) {
   event.preventDefault()
-  if (!email.value || !password.value)
+  if (!email.value || !password.value) {
+    toast({
+      title: 'Form tidak lengkap',
+      description: 'Email dan password wajib diisi.',
+      variant: 'destructive',
+    })
     return
+  }
 
   isLoading.value = true
 
-  setTimeout(() => {
-    if (email.value === 'example@gmail.com' && password.value === 'password')
-      navigateTo('/')
+  const result = await login(email.value, password.value)
 
+  if (!result) {
+    // Jika login gagal, toast sudah ditangani di useAuth
     isLoading.value = false
-  }, 3000)
+    return
+  }
+
+  // Jika berhasil, diarahkan ke halaman sudah di dalam login()
+  // Jika kamu ingin ambil data profile setelahnya, bisa ambil dari result
+  isLoading.value = false
 }
 </script>
 
@@ -37,9 +54,7 @@ function onSubmit(event: Event) {
     </div>
     <Separator label="Or continue with" />
     <div class="grid gap-2">
-      <Label for="email">
-        Email
-      </Label>
+      <Label for="email">Email</Label>
       <Input
         id="email"
         v-model="email"
@@ -53,31 +68,17 @@ function onSubmit(event: Event) {
     </div>
     <div class="grid gap-2">
       <div class="flex items-center">
-        <Label for="password">
-          Password
-        </Label>
-        <NuxtLink
-          to="/forgot-password"
-          class="ml-auto inline-block text-sm underline"
-        >
+        <Label for="password">Password</Label>
+        <NuxtLink to="/forgot-password" class="ml-auto inline-block text-sm underline">
           Forgot your password?
         </NuxtLink>
       </div>
-      <PasswordInput id="password" v-model="password" />
+      <PasswordInput id="password" v-model="password" :disabled="isLoading" />
     </div>
     <Button type="submit" class="w-full" :disabled="isLoading">
       <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
       Login
     </Button>
   </form>
-  <div class="mt-4 text-center text-sm text-muted-foreground">
-    Don't have an account?
-    <NuxtLink to="/register" class="underline">
-      Sign up
-    </NuxtLink>
-  </div>
+
 </template>
-
-<style scoped>
-
-</style>
