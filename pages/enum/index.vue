@@ -8,6 +8,7 @@ const supabase = useSupabaseClient()
 const categoryMarket = ref<any[]>([])
 const categoryNews = ref<any[]>([])
 const categoryExpert = ref<any[]>([])
+const category = ref<any[]>([])
 const loading = ref(true)
 
 // Dialog states
@@ -18,8 +19,7 @@ const currentItem = ref<any>(null)
 
 // Form data
 const formData = ref({
-  name: '',
-  value: ''
+  name: ''
 })
 
 // Load data from all tables
@@ -27,10 +27,11 @@ const loadData = async () => {
   loading.value = true
   
   try {
-    const [marketRes, newsRes, expertRes] = await Promise.all([
+    const [marketRes, newsRes, expertRes, categoryRes] = await Promise.all([
       supabase.from('category_markets').select('*').order('created_at', { ascending: false }),
       supabase.from('category_news').select('*').order('created_at', { ascending: false }),
-      supabase.from('category_expert').select('*').order('created_at', { ascending: false })
+      supabase.from('category_expert').select('*').order('created_at', { ascending: false }),
+      supabase.from('category').select('*').order('created_at', { ascending: false })
     ])
 
     if (marketRes.error) console.error('Error loading category_markets:', marketRes.error)
@@ -41,6 +42,9 @@ const loadData = async () => {
 
     if (expertRes.error) console.error('Error loading category_expert:', expertRes.error)
     else categoryExpert.value = expertRes.data || []
+    
+    if (categoryRes.error) console.error('Error loading category:', categoryRes.error)
+    else category.value = categoryRes.data || []
 
   } catch (error) {
     console.error('Error loading data:', error)
@@ -52,13 +56,13 @@ const loadData = async () => {
 // Open create dialog
 const openCreateDialog = (table: string) => {
   currentTable.value = table
-  formData.value = { name: '', value: '' }
+  formData.value = { name: '' }
   showCreateDialog.value = true
 }
 
 // Create new item
 const createItem = async () => {
-  if (!formData.value.name || !formData.value.value) return
+  if (!formData.value.name) return
 
   const { error } = await supabase
     .from(currentTable.value)
@@ -96,6 +100,17 @@ const deleteItem = async () => {
   }
 }
 
+// Get table display name
+const getTableDisplayName = (tableName: string) => {
+  const names: { [key: string]: string } = {
+    'category_markets': 'Market',
+    'category_news': 'News', 
+    'category_expert': 'Expert',
+    'category': 'Category'
+  }
+  return names[tableName] || tableName
+}
+
 onMounted(() => {
   loadData()
 })
@@ -129,7 +144,7 @@ onMounted(() => {
             variant="secondary"
             class="flex items-center gap-2 px-3 py-1.5"
           >
-            <span>{{ item.name }} - {{ item.value }}</span>
+            <span>{{ item.name }}</span>
             <Button
               @click="openDeleteDialog('category_markets', item)"
               variant="ghost"
@@ -161,7 +176,7 @@ onMounted(() => {
             variant="secondary"
             class="flex items-center gap-2 px-3 py-1.5"
           >
-            <span>{{ item.name }} - {{ item.value }}</span>
+            <span>{{ item.name }}</span>
             <Button
               @click="openDeleteDialog('category_news', item)"
               variant="ghost"
@@ -193,7 +208,7 @@ onMounted(() => {
             variant="secondary"
             class="flex items-center gap-2 px-3 py-1.5"
           >
-            <span>{{ item.name }} - {{ item.value }}</span>
+            <span>{{ item.name }}</span>
             <Button
               @click="openDeleteDialog('category_expert', item)"
               variant="ghost"
@@ -208,15 +223,47 @@ onMounted(() => {
           </div>
         </div>
       </div>
+
+      <!-- Category -->
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Category</h2>
+          <Button @click="openCreateDialog('category')" size="sm">
+            <Plus class="h-4 w-4 mr-2" />
+            Tambah Category
+          </Button>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Badge
+            v-for="item in category"
+            :key="item.id"
+            variant="secondary"
+            class="flex items-center gap-2 px-3 py-1.5"
+          >
+            <span>{{ item.name }}</span>
+            <Button
+              @click="openDeleteDialog('category', item)"
+              variant="ghost"
+              size="sm"
+              class="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <Trash2 class="h-3 w-3" />
+            </Button>
+          </Badge>
+          <div v-if="category.length === 0" class="text-muted-foreground text-sm">
+            Belum ada data category
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Create Dialog -->
     <Dialog v-model:open="showCreateDialog">
       <DialogContent class="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Tambah {{ currentTable.replace('category_', '').replace('_', ' ') }}</DialogTitle>
+          <DialogTitle>Tambah {{ getTableDisplayName(currentTable) }}</DialogTitle>
           <DialogDescription>
-            Masukkan nama dan nilai untuk kategori baru
+            Masukkan nama untuk kategori baru
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-4">
@@ -228,20 +275,12 @@ onMounted(() => {
               placeholder="Masukkan nama kategori"
             />
           </div>
-          <div class="space-y-2">
-            <Label for="value">Nilai</Label>
-            <Input
-              id="value"
-              v-model="formData.value"
-              placeholder="Masukkan nilai kategori"
-            />
-          </div>
         </div>
         <DialogFooter>
           <Button @click="showCreateDialog = false" variant="outline">
             Batal
           </Button>
-          <Button @click="createItem" :disabled="!formData.name || !formData.value">
+          <Button @click="createItem" :disabled="!formData.name">
             Simpan
           </Button>
         </DialogFooter>
@@ -254,7 +293,7 @@ onMounted(() => {
         <AlertDialogHeader>
           <AlertDialogTitle>Hapus Item</AlertDialogTitle>
           <AlertDialogDescription>
-            Apakah Anda yakin ingin menghapus "{{ currentItem?.name }}" dari {{ currentTable.replace('category_', '').replace('_', ' ') }}?
+            Apakah Anda yakin ingin menghapus "{{ currentItem?.name }}" dari {{ getTableDisplayName(currentTable) }}?
             Tindakan ini tidak dapat dibatalkan.
           </AlertDialogDescription>
         </AlertDialogHeader>

@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '~/components/ui/toast'
 import CategoryFilter from '~/components/Filters/Category.vue'
 import FormCourse from '~/components/Dialog/FormCourse.vue'
+import DetailCourse from '~/components/Dialog/DetailCourse.vue'
 
 const supabase = useSupabaseClient()
 const { toast } = useToast()
@@ -20,6 +21,7 @@ const loading = ref(true)
 const showFormDialog = ref(false)
 const showDeleteDialog = ref(false)
 const showArchiveDialog = ref(false)
+const showDetailDialog = ref(false)
 const selectedCourse = ref<any>(null)
 const formMode = ref<'create' | 'edit'>('create')
 
@@ -243,9 +245,14 @@ function openArchiveDialog(course: any) {
   showArchiveDialog.value = true
 }
 
+function openDetailDialog(course: any) {
+  selectedCourse.value = course
+  showDetailDialog.value = true
+}
+
 function viewCourse(course: any) {
-  // Navigate to course detail page
-  navigateTo(`/courses/${course.id}`)
+  // Open detail dialog instead of navigation
+  openDetailDialog(course)
 }
 
 async function handleFormSuccess() {
@@ -636,6 +643,13 @@ async function confirmArchive() {
       :course-item="selectedCourse"
       @update:open="showFormDialog = $event"
       @success="handleFormSuccess"
+    />
+
+    <!-- Detail Dialog -->
+    <DetailCourse 
+      :open="showDetailDialog"
+      :course-item="selectedCourse"
+      @update:open="showDetailDialog = $event"
     />
 
     <!-- Delete Confirmation Dialog -->

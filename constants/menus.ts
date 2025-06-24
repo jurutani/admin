@@ -40,9 +40,9 @@ export const navMenu: NavMenu[] = [
     heading: 'Resources',
     items: [
       {
-        title: 'Books',
-        icon: 'i-lucide-book',
-        link: '/resources/books',
+        title: 'Meetings',
+        icon: 'i-lucide-users-round',
+        link: '/resources/meetings',
       },
       {
         title: 'Videos',
@@ -75,17 +75,17 @@ export const navMenu: NavMenu[] = [
         new: true,
         children: [
           {
-            title: 'All Users',
+            title: 'Petani',
             icon: 'i-lucide-circle',
             link: '/users',
           },
           {
-            title: 'Experts',
+            title: 'Pakar',
             icon: 'i-lucide-circle',
             link: '/users/experts',
           },
           {
-            title: 'Instructors',
+            title: 'Penyuluh',
             icon: 'i-lucide-circle',
             link: '/users/instructors',
           },
