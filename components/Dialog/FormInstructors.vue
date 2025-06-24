@@ -271,11 +271,11 @@ async function handleSubmit() {
     const instructorData = {
       user_id: form.value.user_id,
       district: form.value.district,
-      province: form.value.province,
+      provinces: form.value.province,
       note: form.value.note,
       updated_at: now,
       created_at: now,
-      deleted_at: null
+      deleted_at: null,
     }
 
     // Add id for edit mode
@@ -284,11 +284,11 @@ async function handleSubmit() {
     }
 
     // Use upsert for instructors table
-    const { data: instructorResult, error: instructorError } = await supabase
+    const { data: instructorResult, error: instructorError } = nst
+    await supabase
       .from('instructors')
-      .upsert(instructorData, { 
-        onConflict: isEdit.value ? 'id' : 'user_id,district',
-        ignoreDuplicates: false 
+      .upsert(instructorData, {
+        onConflict: 'user_id,district'
       })
       .select()
 
