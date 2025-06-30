@@ -4,7 +4,7 @@
 <template>
   <div class="flex items-center justify-center p-4">
     <Icon name="i-lucide-shield" class="size-8 text-sidebar-primary-foreground" />
-    JuruTani AdminSS
+    JuruTani Admin
   </div>
 </template>
 
