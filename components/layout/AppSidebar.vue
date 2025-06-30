@@ -9,23 +9,6 @@ function resolveNavItemComponent(item: NavLink | NavGroup | NavSectionTitle): an
   return resolveComponent('LayoutSidebarNavLink')
 }
 
-const teams: {
-  name: string
-  logo: string
-  plan: string
-}[] = [
-  {
-    name: 'Admin',
-    logo: 'i-lucide-user',
-    plan: 'admin juru tani',
-  },
-  {
-    name: 'Penyuluh',
-    logo: 'i-lucide-user-check',
-    plan: 'penyuluh juru tani',
-  },
-]
-
 const user: {
   name: string
   email: string
@@ -42,7 +25,7 @@ const { sidebar } = useAppSettings()
 <template>
   <Sidebar :collapsible="sidebar.collapsible" :side="sidebar.side" :variant="sidebar.variant">
     <SidebarHeader>
-      <LayoutSidebarNavHeader :teams="teams" />
+      <LayoutSidebarNavHeader />
       <Search />
     </SidebarHeader>
     <SidebarContent>

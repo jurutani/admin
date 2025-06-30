@@ -1,25 +1,39 @@
 <script setup lang="ts">
+import { ChevronUp, Settings, Palette, LogOut } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { useAuth } from '@/composables/useAuth'
 import { useSidebar } from '~/components/ui/sidebar'
 
-defineProps<{
-  user: {
-    name: string
-    email: string
-    avatar: string
-  }
-}>()
+// Remove props, use auth instead
+const { user, profile, logout } = useAuth()
 
 const { isMobile, setOpenMobile } = useSidebar()
 
-function handleLogout() {
-  navigateTo('/login')
+// Computed user data from auth
+const userData = computed(() => {
+  if (!user.value || !profile.value) return null
+  
+  return {
+    name: profile.value.full_name || profile.value.username || 'Admin',
+    email: user.value.email || profile.value.email || '',
+    avatar: profile.value.avatar_url || '',
+    initials: (profile.value.full_name || profile.value.username || 'A')
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+  }
+})
+
+async function handleLogout() {
+  await logout()
 }
 
 const showModalTheme = ref(false)
 </script>
 
 <template>
-  <SidebarMenu>
+  <SidebarMenu v-if="userData">
     <SidebarMenuItem>
       <DropdownMenu>
         <DropdownMenuTrigger as-child>
@@ -28,16 +42,20 @@ const showModalTheme = ref(false)
             class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
           >
             <Avatar class="h-8 w-8 rounded-lg">
-              <AvatarImage :src="user.avatar" :alt="user.name" />
+              <AvatarImage 
+                v-if="userData.avatar" 
+                :src="userData.avatar" 
+                :alt="userData.name" 
+              />
               <AvatarFallback class="rounded-lg">
-                {{ user.name.split(' ').map((n) => n[0]).join('') }}
+                {{ userData.initials }}
               </AvatarFallback>
             </Avatar>
             <div class="grid flex-1 text-left text-sm leading-tight">
-              <span class="truncate font-semibold">{{ user.name }}</span>
-              <span class="truncate text-xs">{{ user.email }}</span>
+              <span class="truncate font-semibold">{{ userData.name }}</span>
+              <span class="truncate text-xs text-muted-foreground">{{ userData.email }}</span>
             </div>
-            <Icon name="i-lucide-chevrons-up-down" class="ml-auto size-4" />
+            <ChevronUp class="ml-auto size-4" />
           </SidebarMenuButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -48,48 +66,38 @@ const showModalTheme = ref(false)
           <DropdownMenuLabel class="p-0 font-normal">
             <div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
               <Avatar class="h-8 w-8 rounded-lg">
-                <AvatarImage :src="user.avatar" :alt="user.name" />
+                <AvatarImage 
+                  v-if="userData.avatar" 
+                  :src="userData.avatar" 
+                  :alt="userData.name" 
+                />
                 <AvatarFallback class="rounded-lg">
-                  {{ user.name.split(' ').map((n) => n[0]).join('') }}
+                  {{ userData.initials }}
                 </AvatarFallback>
               </Avatar>
               <div class="grid flex-1 text-left text-sm leading-tight">
-                <span class="truncate font-semibold">{{ user.name }}</span>
-                <span class="truncate text-xs">{{ user.email }}</span>
+                <span class="truncate font-semibold">{{ userData.name }}</span>
+                <span class="truncate text-xs text-muted-foreground">{{ userData.email }}</span>
               </div>
             </div>
           </DropdownMenuLabel>
-          <DropdownMenuSeparator />          
+          <DropdownMenuSeparator />
           <DropdownMenuGroup>
-            <DropdownMenuItem>
-              <Icon name="i-lucide-badge-check" />
-              Account
-            </DropdownMenuItem>
             <DropdownMenuItem as-child>
               <NuxtLink to="/settings" @click="setOpenMobile(false)">
-                <Icon name="i-lucide-settings" />
+                <Settings class="mr-2 h-4 w-4" />
                 Settings
               </NuxtLink>
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Icon name="i-lucide-bell" />
-              Notifications
-            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem as-child>
-              <NuxtLink to="https://github.com/IlhamKurniawanBlora" disabled external target="_blank">
-                <Icon name="i-lucide-github" />
-                Github Repository
-              </NuxtLink>
-            </DropdownMenuItem>
             <DropdownMenuItem @click="showModalTheme = true">
-              <Icon name="i-lucide-paintbrush" />
+              <Palette class="mr-2 h-4 w-4" />
               Theme
             </DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem @click="handleLogout">
-            <Icon name="i-lucide-log-out" />
+            <LogOut class="mr-2 h-4 w-4" />
             Log out
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -97,10 +105,24 @@ const showModalTheme = ref(false)
     </SidebarMenuItem>
   </SidebarMenu>
 
+  <!-- Loading state -->
+  <SidebarMenu v-else>
+    <SidebarMenuItem>
+      <SidebarMenuButton size="lg" disabled>
+        <div class="h-8 w-8 rounded-lg bg-muted animate-pulse" />
+        <div class="grid flex-1 text-left text-sm leading-tight">
+          <div class="h-4 bg-muted rounded animate-pulse mb-1" />
+          <div class="h-3 bg-muted rounded animate-pulse w-3/4" />
+        </div>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  </SidebarMenu>
+
+  <!-- Theme Modal -->
   <Dialog v-model:open="showModalTheme">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Customize</DialogTitle>
+        <DialogTitle>Customize Theme</DialogTitle>
         <DialogDescription class="text-xs text-muted-foreground">
           Customize & Preview in Real Time
         </DialogDescription>
@@ -109,7 +131,3 @@ const showModalTheme = ref(false)
     </DialogContent>
   </Dialog>
 </template>
-
-<style scoped>
-
-</style>

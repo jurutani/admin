@@ -1,14 +1,25 @@
 <script setup lang="ts">
 import {
-  MessageCircle,
-  TrendingUp,
-  Newspaper,
   BookOpen,
+  MessageCircle,
+  Newspaper,
+  TrendingUp,
+  Users,
   Video,
-  GraduationCap 
+  User,
+  LogOut,
 } from 'lucide-vue-next'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAuth } from '@/composables/useAuth'
+
+// Middleware untuk admin
+definePageMeta({
+  middleware: 'admin'
+})
+
+// Auth composable
+const { user, profile, logout } = useAuth()
 
 interface DashboardItem {
   id: number
@@ -46,11 +57,11 @@ const dashboardItems: DashboardItem[] = [
   },
   {
     id: 4,
-    title: 'Books',
-    description: 'Lihat koleksi buku',
-    route: '/resources/books',
+    title: 'Meetings',
+    description: 'Lihat Pertemuan terbaru',
+    route: '/resources/meetings',
     buttonText: 'Selengkapnya',
-    icon: BookOpen,
+    icon: Users,
   },
   {
     id: 5,
@@ -66,19 +77,39 @@ const dashboardItems: DashboardItem[] = [
     description: 'Kursus trading lengkap',
     route: '/resources/courses',
     buttonText: 'Selengkapnya',
-    icon: GraduationCap,
-  }
+    icon: BookOpen,
+  },
 ]
+
+async function handleLogout() {
+  await logout()
+}
 </script>
 
 <template>
   <div class="container mx-auto p-6">
-    <div class="mb-8">
-      <h1 class="text-3xl font-bold">Dashboard Jurutani</h1>
-      <p class="text-muted-foreground">Platform pembelajaran dan trading</p>
+    <!-- Header with user info -->
+    <div class="mb-8 flex justify-between items-start">
+      <div>
+        <h1 class="text-3xl font-bold">Dashboard Jurutani</h1>
+        <p class="text-muted-foreground">Platform pembelajaran dan trading</p>
+      </div>
+      
+      <!-- User info and logout -->
+      <div class="flex items-center gap-4">
+        <div class="text-right">
+          <p class="text-sm font-medium">{{ profile?.full_name || profile?.username || 'Admin' }}</p>
+          <p class="text-xs text-muted-foreground">{{ user?.email }}</p>
+        </div>
+        <Button @click="handleLogout" variant="outline" size="sm">
+          <LogOut class="h-4 w-4 mr-2" />
+          Logout
+        </Button>
+      </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Dashboard Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
       <Card v-for="item in dashboardItems" :key="item.id" class="hover:shadow-md transition-shadow">
         <CardHeader>
           <CardTitle class="flex items-center gap-2">
@@ -95,6 +126,34 @@ const dashboardItems: DashboardItem[] = [
               {{ item.buttonText }}
             </NuxtLink>
           </Button>
+        </CardContent>
+      </Card>
+    </div>
+
+    <!-- User Data Display -->
+    <div class="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle class="flex items-center gap-2">
+            <User class="h-5 w-5" />
+            User Data
+          </CardTitle>
+          <CardDescription>
+            Current authenticated user information
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div class="space-y-4">
+            <div>
+              <h3 class="font-semibold text-sm text-muted-foreground mb-2">Auth User Data:</h3>
+              <pre class="bg-muted p-4 rounded-lg text-sm overflow-auto">{{ JSON.stringify(user, null, 2) }}</pre>
+            </div>
+            
+            <div>
+              <h3 class="font-semibold text-sm text-muted-foreground mb-2">Profile Data:</h3>
+              <pre class="bg-muted p-4 rounded-lg text-sm overflow-auto">{{ JSON.stringify(profile, null, 2) }}</pre>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

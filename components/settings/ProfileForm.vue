@@ -2,165 +2,322 @@
 import { cn } from '@/lib/utils'
 import { toTypedSchema } from '@vee-validate/zod'
 import { FieldArray, useForm } from 'vee-validate'
-import { h, ref } from 'vue'
+import { h, ref, onMounted, computed, watch } from 'vue'
 import * as z from 'zod'
 import { toast } from '~/components/ui/toast'
+import { useAuth } from '~/composables/useAuth'
 
-const verifiedEmails = ref(['m@example.com', 'm@google.com', 'm@support.com'])
+// Auth composable
+const { user, profile, updateProfile, loading: authLoading } = useAuth()
 
+// Local loading state
+const isSubmitting = ref(false)
+
+// Verified emails (bisa diganti dengan data dari database)
+const verifiedEmails = computed(() => {
+  const emails = []
+  if (user.value?.email) {
+    emails.push(user.value.email)
+  }
+  if (profile.value?.email && profile.value.email !== user.value?.email) {
+    emails.push(profile.value.email)
+  }
+  return emails
+})
+
+// Profile form schema - disesuaikan dengan struktur UserProfile
 const profileFormSchema = toTypedSchema(z.object({
   username: z
     .string()
     .min(2, {
-      message: 'Username must be at least 2 characters.',
+      message: 'Username harus minimal 2 karakter.',
     })
     .max(30, {
-      message: 'Username must not be longer than 30 characters.',
-    }),
+      message: 'Username tidak boleh lebih dari 30 karakter.',
+    })
+    .optional(),
+  full_name: z
+    .string()
+    .min(2, {
+      message: 'Nama lengkap harus minimal 2 karakter.',
+    })
+    .max(100, {
+      message: 'Nama lengkap tidak boleh lebih dari 100 karakter.',
+    })
+    .optional(),
   email: z
     .string({
-      required_error: 'Please select an email to display.',
+      required_error: 'Silakan pilih email untuk ditampilkan.',
     })
-    .email(),
-  bio: z.string().max(160, { message: 'Bio must not be longer than 160 characters.' }).min(4, { message: 'Bio must be at least 2 characters.' }),
-  urls: z
-    .array(
-      z.object({
-        value: z.string().url({ message: 'Please enter a valid URL.' }),
-      }),
-    )
+    .email()
+    .optional(),
+  bio: z
+    .string()
+    .max(500, { message: 'Bio tidak boleh lebih dari 500 karakter.' })
+    .optional(),
+  phone: z
+    .string()
+    .optional(),
+  website: z
+    .string()
+    .url({ message: 'Silakan masukkan URL yang valid.' })
+    .optional()
+    .or(z.literal('')),
+  address: z
+    .string()
     .optional(),
 }))
 
-const { handleSubmit, resetForm } = useForm({
+// Form setup
+const { handleSubmit, resetForm, setValues, values } = useForm({
   validationSchema: profileFormSchema,
   initialValues: {
-    bio: 'I own a computer.',
-    urls: [
-      { value: 'https://shadcn.com' },
-      { value: 'http://twitter.com/shadcn' },
-    ],
+    username: '',
+    full_name: '',
+    email: '',
+    bio: '',
+    phone: '',
+    website: '',
+    address: '',
+    urls: [],
   },
 })
 
-const onSubmit = handleSubmit((values) => {
-  toast({
-    title: 'You submitted the following values:',
-    description: h('pre', { class: 'mt-2 w-[340px] rounded-md bg-slate-950 p-4' }, h('code', { class: 'text-white' }, JSON.stringify(values, null, 2))),
-  })
+// Load profile data into form when profile is available
+watch(profile, (newProfile) => {
+  if (newProfile) {
+    setValues({
+      username: newProfile.username || '',
+      full_name: newProfile.full_name || '',
+      email: newProfile.email || user.value?.email || '',
+      bio: newProfile.bio || '',
+      phone: newProfile.phone || '',
+      website: newProfile.website || '',
+      address: newProfile.address || '',
+      urls: newProfile.website ? [{ value: newProfile.website }] : [],
+    })
+  }
+}, { immediate: true })
+
+// Submit handler
+const onSubmit = handleSubmit(async (values) => {
+  if (!user.value) {
+    toast({
+      title: 'Error',
+      description: 'Anda harus login terlebih dahulu',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  try {
+    isSubmitting.value = true
+
+    // Prepare update data
+    const updateData = {
+      username: values.username || null,
+      full_name: values.full_name || null,
+      email: values.email || null,
+      bio: values.bio || null,
+      phone: values.phone || null,
+      website: values.website || null,
+      address: values.address || null,
+    }
+
+    // Remove empty strings and convert to null
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === '') {
+        updateData[key] = null
+      }
+    })
+
+    const result = await updateProfile(updateData)
+
+    if (result) {
+      toast({
+        title: 'Berhasil!',
+        description: 'Profile berhasil diperbarui',
+      })
+    }
+  } catch (error) {
+    console.error('Error updating profile:', error)
+    toast({
+      title: 'Gagal',
+      description: 'Terjadi kesalahan saat memperbarui profile',
+      variant: 'destructive',
+    })
+  } finally {
+    isSubmitting.value = false
+  }
 })
+
+// Reset form to current profile values
+const handleReset = () => {
+  if (profile.value) {
+    setValues({
+      username: profile.value.username || '',
+      full_name: profile.value.full_name || '',
+      email: profile.value.email || user.value?.email || '',
+      bio: profile.value.bio || '',
+      phone: profile.value.phone || '',
+      website: profile.value.website || '',
+      address: profile.value.address || '',
+      urls: profile.value.website ? [{ value: profile.value.website }] : [],
+    })
+  }
+}
 </script>
 
 <template>
   <div>
-    <h3 class="text-lg font-medium">
-      Profile
-    </h3>
-    <p class="text-sm text-muted-foreground">
-      This is how others will see you on the site.
-    </p>
-  </div>
-  <Separator />
-  <form class="space-y-8" @submit="onSubmit">
-    <FormField v-slot="{ componentField }" name="username">
-      <FormItem>
-        <FormLabel>Username</FormLabel>
-        <FormControl>
-          <Input type="text" placeholder="shadcn" v-bind="componentField" />
-        </FormControl>
-        <FormDescription>
-          This is your public display name. It can be your real name or a pseudonym. You can only change this once every 30 days.
-        </FormDescription>
-        <FormMessage />
-      </FormItem>
-    </FormField>
+    <!-- Loading state -->
+    <div v-if="authLoading" class="flex items-center justify-center py-8">
+      <div class="flex items-center space-x-2">
+        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+        <span class="text-sm text-muted-foreground">Memuat profile...</span>
+      </div>
+    </div>
 
-    <FormField v-slot="{ componentField }" name="email">
-      <FormItem>
-        <FormLabel>Email</FormLabel>
-
-        <Select v-bind="componentField">
+    <!-- Form -->
+    <form v-else class="space-y-2" @submit="onSubmit">
+      <!-- Full Name -->
+      <FormField v-slot="{ componentField }" name="full_name">
+        <FormItem>
+          <FormLabel>Nama Lengkap</FormLabel>
           <FormControl>
-            <SelectTrigger>
-              <SelectValue placeholder="Select an email" />
-            </SelectTrigger>
+            <Input 
+              type="text" 
+              placeholder="Masukkan nama lengkap" 
+              v-bind="componentField" 
+              :disabled="isSubmitting"
+            />
           </FormControl>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem v-for="email in verifiedEmails" :key="email" :value="email">
-                {{ email }}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <FormDescription>
-          You can manage verified email addresses in your email settings.
-        </FormDescription>
-        <FormMessage />
-      </FormItem>
-    </FormField>
+          <FormMessage />
+        </FormItem>
+      </FormField>
 
-    <FormField v-slot="{ componentField }" name="bio">
-      <FormItem>
-        <FormLabel>Bio</FormLabel>
-        <FormControl>
-          <Textarea placeholder="Tell us a little bit about yourself" v-bind="componentField" />
-        </FormControl>
-        <FormDescription>
-          You can <span>@mention</span> other users and organizations to link to them.
-        </FormDescription>
-        <FormMessage />
-      </FormItem>
-    </FormField>
+      <!-- Username -->
+      <FormField v-slot="{ componentField }" name="username">
+        <FormItem>
+          <FormLabel>Username</FormLabel>
+          <FormControl>
+            <Input 
+              type="text" 
+              placeholder="username" 
+              v-bind="componentField" 
+              :disabled="isSubmitting"
+            />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      </FormField>
 
-    <div>
-      <FieldArray v-slot="{ fields, push, remove }" name="urls">
-        <div v-for="(field, index) in fields" :key="`urls-${field.key}`">
-          <FormField v-slot="{ componentField }" :name="`urls[${index}].value`">
-            <FormItem>
-              <FormLabel :class="cn(index !== 0 && 'sr-only')">
-                URLs
-              </FormLabel>
-              <FormDescription :class="cn(index !== 0 && 'sr-only')">
-                Add links to your website, blog, or social media profiles.
-              </FormDescription>
-              <div class="relative flex items-center">
-                <FormControl>
-                  <Input type="url" v-bind="componentField" />
-                </FormControl>
-                <button type="button" class="absolute end-0 py-2 pe-3 text-muted-foreground" @click="remove(index)">
-                  <Icon name="i-radix-icons-cross-1" class="w-3" />
-                </button>
-              </div>
-              <FormMessage />
-            </FormItem>
-          </FormField>
-        </div>
+      <!-- Email -->
+      <FormField v-slot="{ componentField }" name="email">
+        <FormItem>
+          <FormLabel>Email</FormLabel>
+          <Select v-bind="componentField" :disabled="isSubmitting">
+            <FormControl>
+              <SelectTrigger>
+                <SelectValue placeholder="Pilih email" />
+              </SelectTrigger>
+            </FormControl>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem v-for="email in verifiedEmails" :key="email" :value="email">
+                  {{ email }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <FormMessage />
+        </FormItem>
+      </FormField>
+
+      <!-- Phone -->
+      <FormField v-slot="{ componentField }" name="phone">
+        <FormItem>
+          <FormLabel>Nomor Telepon</FormLabel>
+          <FormControl>
+            <Input 
+              type="tel" 
+              placeholder="+62 812 3456 7890" 
+              v-bind="componentField" 
+              :disabled="isSubmitting"
+            />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      </FormField>
+
+      <!-- Bio -->
+      <FormField v-slot="{ componentField }" name="bio">
+        <FormItem>
+          <FormLabel>Bio</FormLabel>
+          <FormControl>
+            <Textarea 
+              placeholder="Ceritakan sedikit tentang diri Anda" 
+              v-bind="componentField" 
+              :disabled="isSubmitting"
+            />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      </FormField>
+
+      <!-- Website -->
+      <FormField v-slot="{ componentField }" name="website">
+        <FormItem>
+          <FormLabel>Website</FormLabel>
+          <FormControl>
+            <Input 
+              type="url" 
+              placeholder="https://example.com" 
+              v-bind="componentField" 
+              :disabled="isSubmitting"
+            />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      </FormField>
+
+      <!-- Address -->
+      <FormField v-slot="{ componentField }" name="address">
+        <FormItem>
+          <FormLabel>Alamat</FormLabel>
+          <FormControl>
+            <Textarea 
+              placeholder="Masukkan alamat Anda" 
+              v-bind="componentField" 
+              :disabled="isSubmitting"
+            />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      </FormField>
+      <!-- Form Actions -->
+      <div class="flex justify-start gap-2">
+        <Button 
+          type="submit" 
+          :disabled="isSubmitting || authLoading"
+          class="min-w-32"
+        >
+          <div v-if="isSubmitting" class="flex items-center space-x-2">
+            <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+            <span>Memperbarui...</span>
+          </div>
+          <span v-else>Perbarui Profile</span>
+        </Button>
 
         <Button
           type="button"
           variant="outline"
-          size="sm"
-          class="mt-2 w-20 text-xs"
-          @click="push({ value: '' })"
+          @click="handleReset"
+          :disabled="isSubmitting || authLoading"
         >
-          Add URL
+          Reset
         </Button>
-      </FieldArray>
-    </div>
-
-    <div class="flex justify-start gap-2">
-      <Button type="submit">
-        Update profile
-      </Button>
-
-      <Button
-        type="button"
-        variant="outline"
-        @click="resetForm"
-      >
-        Reset form
-      </Button>
-    </div>
-  </form>
+      </div>
+    </form>
+  </div>
 </template>

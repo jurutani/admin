@@ -8,12 +8,14 @@ import PasswordInput from '~/components/PasswordInput.vue'
 const email = ref('')
 const password = ref('')
 const isLoading = ref(false)
+const isGoogleLoading = ref(false)
 
-const { login } = useAuth()
+const { login, loginWithGoogle } = useAuth()
 const { toast } = useToast()
 
 async function onSubmit(event: Event) {
   event.preventDefault()
+  
   if (!email.value || !password.value) {
     toast({
       title: 'Form tidak lengkap',
@@ -25,34 +27,44 @@ async function onSubmit(event: Event) {
 
   isLoading.value = true
 
-  const result = await login(email.value, password.value)
+  try {
+    const result = await login(email.value, password.value)
 
-  if (!result) {
-    // Jika login gagal, toast sudah ditangani di useAuth
+    if (result) {
+      // Login berhasil, reset form
+      email.value = ''
+      password.value = ''
+    }
+  } catch (error) {
+    console.error('Login error:', error)
+  } finally {
     isLoading.value = false
-    return
   }
-
-  // Jika berhasil, diarahkan ke halaman sudah di dalam login()
-  // Jika kamu ingin ambil data profile setelahnya, bisa ambil dari result
-  isLoading.value = false
 }
+
+async function handleGoogleLogin() {
+  isGoogleLoading.value = true
+  
+  try {
+    await loginWithGoogle()
+  } catch (error) {
+    console.error('Google login error:', error)
+    toast({
+      title: 'Login Gagal',
+      description: 'Terjadi kesalahan saat login dengan Google',
+      variant: 'destructive',
+    })
+  } finally {
+    isGoogleLoading.value = false
+  }
+}
+
+// Computed untuk disabled state
+const isFormDisabled = computed(() => isLoading.value || isGoogleLoading.value)
 </script>
 
 <template>
   <form class="grid gap-6" @submit="onSubmit">
-    <div class="flex flex-col gap-4">
-      <Button variant="outline" class="w-full gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-4">
-          <path
-            d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-            fill="currentColor"
-          />
-        </svg>
-        Login with Google
-      </Button>
-    </div>
-    <Separator label="Or continue with" />
     <div class="grid gap-2">
       <Label for="email">Email</Label>
       <Input
@@ -60,21 +72,33 @@ async function onSubmit(event: Event) {
         v-model="email"
         type="email"
         placeholder="name@example.com"
-        :disabled="isLoading"
-        auto-capitalize="none"
-        auto-complete="email"
-        auto-correct="off"
+        :disabled="isFormDisabled"
+        autocapitalize="none"
+        autocomplete="email"
+        autocorrect="off"
+        required
       />
     </div>
+    
     <div class="grid gap-2">
       <div class="flex items-center">
         <Label for="password">Password</Label>
       </div>
-      <PasswordInput id="password" v-model="password" :disabled="isLoading" />
+      <PasswordInput 
+        id="password" 
+        v-model="password" 
+        :disabled="isFormDisabled"
+        required
+      />
     </div>
-    <Button type="submit" class="w-full" :disabled="isLoading">
+    
+    <Button 
+      type="submit" 
+      class="w-full" 
+      :disabled="isFormDisabled"
+    >
       <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
-      Login
+      {{ isLoading ? 'Signing in...' : 'Sign In' }}
     </Button>
   </form>
 </template>
