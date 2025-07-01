@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import HeroTabs from '~/components/Dashboard/HeroTabs.vue'
-import BannerTabs from '~/components/Dashboard/BannerTabs.vue'
+import BannerTabs from '~/components/dashboard/BannerTabs.vue'
+import HeroTabs from '~/components/dashboard/HeroTabs.vue'
 
 // Active tab state
 const activeTab = ref('hero')
