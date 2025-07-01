@@ -8,9 +8,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 import { Calendar, Upload, X, ExternalLink, FileImage, Trash2 } from 'lucide-vue-next'
+import { useAuth } from '~/composables/useAuth'
 
 const supabase = useSupabaseClient()
-const user = useSupabaseUser()
+const { user } = useAuth()
 const { toast } = useToast()
 
 const props = defineProps<{
@@ -182,6 +183,16 @@ function getAttachmentUrl(meetingId: string, filename: string) {
 }
 
 async function handleSubmit() {
+  // Check if user is authenticated
+  if (!user.value) {
+    toast({
+      title: "Error",
+      description: "Anda harus login terlebih dahulu",
+      variant: "destructive"
+    })
+    return
+  }
+
   if (!form.value.title) {
     toast({
       title: "Error",
@@ -220,7 +231,7 @@ async function handleSubmit() {
       link: form.value.link || null,
       organization: form.value.organization || null,
       category: form.value.category,
-      author_id: user.value?.id,
+      author_id: user.value.id,
       updated_at: new Date().toISOString()
     }
 
@@ -255,17 +266,18 @@ async function handleSubmit() {
       }
 
       // Upload new attachments
+      let uploadedFiles: string[] = []
       if (attachments.value.length > 0) {
-        await uploadAttachments(meetingId)
+        uploadedFiles = await uploadAttachments(meetingId)
       }
 
       // Update attachments field in database
       const allAttachments = [
         ...existingAttachments.value,
-        ...(await uploadAttachments(meetingId))
+        ...uploadedFiles
       ]
 
-      if (allAttachments.length > 0) {
+      if (allAttachments.length > 0 || attachmentsToDelete.value.length > 0) {
         await supabase
           .from('meetings')
           .update({ attachments: allAttachments })
@@ -350,6 +362,7 @@ function formatFileSize(bytes: number) {
             v-model="form.title"
             placeholder="Masukkan judul meeting"
             required
+            :disabled="loading || uploadingImages"
           />
         </div>
 
@@ -357,7 +370,7 @@ function formatFileSize(bytes: number) {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-2">
             <Label for="category">Kategori *</Label>
-            <Select v-model="form.category">
+            <Select v-model="form.category" :disabled="loading || uploadingImages">
               <SelectTrigger>
                 <SelectValue placeholder="Pilih kategori" />
               </SelectTrigger>
@@ -374,6 +387,7 @@ function formatFileSize(bytes: number) {
               id="organization"
               v-model="form.organization"
               placeholder="Nama organisasi/instansi"
+              :disabled="loading || uploadingImages"
             />
           </div>
         </div>
@@ -388,13 +402,14 @@ function formatFileSize(bytes: number) {
               type="url"
               placeholder="https://zoom.us/j/... atau https://meet.google.com/..."
               required
+              :disabled="loading || uploadingImages"
               @blur="formatMeetingUrl"
             />
             <Button
               type="button"
               variant="outline"
               size="sm"
-              :disabled="!form.link || !isValidMeetingUrl"
+              :disabled="!form.link || !isValidMeetingUrl || loading || uploadingImages"
               @click="openMeetingLink"
             >
               <ExternalLink class="h-4 w-4" />
@@ -413,6 +428,7 @@ function formatFileSize(bytes: number) {
             v-model="form.content"
             placeholder="Deskripsi, agenda, atau konten meeting"
             rows="6"
+            :disabled="loading || uploadingImages"
           />
         </div>
 
@@ -434,6 +450,7 @@ function formatFileSize(bytes: number) {
                     accept="image/*"
                     multiple
                     class="sr-only"
+                    :disabled="loading || uploadingImages"
                     @change="handleFileSelect"
                   />
                 </label>
@@ -464,6 +481,7 @@ function formatFileSize(bytes: number) {
                 type="button"
                 variant="ghost"
                 size="sm"
+                :disabled="loading || uploadingImages"
                 @click="removeExistingAttachment(filename)"
                 class="text-red-600 hover:text-red-800"
               >
@@ -487,6 +505,7 @@ function formatFileSize(bytes: number) {
                 type="button"
                 variant="ghost"
                 size="sm"
+                :disabled="loading || uploadingImages"
                 @click="restoreExistingAttachment(filename)"
                 class="text-green-600 hover:text-green-800"
               >
@@ -518,6 +537,7 @@ function formatFileSize(bytes: number) {
                 type="button"
                 variant="ghost"
                 size="sm"
+                :disabled="loading || uploadingImages"
                 @click="removeAttachment(index)"
                 class="text-red-600 hover:text-red-800"
               >
@@ -561,7 +581,7 @@ function formatFileSize(bytes: number) {
           </Button>
           <Button 
             type="submit" 
-            :disabled="loading || uploadingImages || !isValidMeetingUrl"
+            :disabled="loading || uploadingImages || !isValidMeetingUrl || !user"
           >
             <span v-if="loading || uploadingImages">
               <Upload class="h-4 w-4 mr-2 animate-spin" />

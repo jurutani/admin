@@ -3,7 +3,7 @@
 
 <template>
   <div class="flex items-center justify-center p-4">
-    <Icon name="i-lucide-shield" class="size-8 text-sidebar-primary-foreground" />
+    <img src="/jurutaniadmin.png" alt="JuruTani Admin Logo" class="size-8 mr-2" />
     JuruTani Admin
   </div>
 </template>

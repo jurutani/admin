@@ -69,26 +69,13 @@ watch(() => props.marketItem, (newItem) => {
 
 async function fetchCategories() {
   try {
-    // Menggunakan kategori default untuk market, atau fetch dari database jika ada table category_market
-    categories.value = [
-      { name: 'Hasil Pertanian', value: 'Hasil Pertanian' },
-      { name: 'Peralatan Pertanian', value: 'Peralatan Pertanian' },
-      { name: 'Pupuk & Pestisida', value: 'Pupuk & Pestisida' },
-      { name: 'Benih & Bibit', value: 'Benih & Bibit' },
-      { name: 'Produk Olahan', value: 'Produk Olahan' },
-      { name: 'Lainnya', value: 'Lainnya' }
-    ]
-    
-    // Jika ada table category_market, uncomment code dibawah ini:
-    /*
     const { data, error } = await supabase
-      .from('category_market')
+      .from('category_markets')
       .select('name, value')
       .order('name', { ascending: true })
 
     if (error) throw error
     categories.value = data || []
-    */
   } catch (error) {
     console.error('Error fetching categories:', error)
   }
@@ -145,7 +132,7 @@ async function handleSubmit() {
     // Upload image jika ada
     if (form.value.image_file) {
       const marketId = props.marketItem?.id || crypto.randomUUID()
-      const uploadedPath = await uploadFile(form.value.image_file, 'market-images', `markets/${marketId}`)
+      const uploadedPath = await uploadFile(form.value.image_file, 'markets-attachments', `markets/${marketId}`)
       if (uploadedPath) {
         imageUrl = uploadedPath
       }

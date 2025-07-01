@@ -261,27 +261,6 @@ function goToPage(page: number) {
   }
 }
 
-function getStatusBadgeColor(status: string) {
-  switch (status) {
-    case 'Pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300'
-    case 'Approved': return 'bg-green-100 text-green-800 border-green-300'
-    case 'Rejected': return 'bg-red-100 text-red-800 border-red-300'
-    default: return 'bg-gray-100 text-gray-800 border-gray-300'
-  }
-}
-
-function getImage(attachments: any) {
-  try {
-    if (typeof attachments === 'string') {
-      const parsed = JSON.parse(attachments)
-      return parsed.url_image || '/placeholder-image.jpg'
-    }
-    return attachments?.url_image || '/placeholder-image.jpg'
-  } catch {
-    return '/placeholder-image.jpg'
-  }
-}
-
 function hasLinks(links: any) {
   if (!links) return false
   return links.shopee_link || links.tiktok_link || links.tokopedia_link
@@ -340,7 +319,6 @@ function hasLinks(links: any) {
       <Table v-else>
         <TableHeader>
           <TableRow>
-            <TableHead>Gambar</TableHead>
             <TableHead>Nama Produk</TableHead>
             <TableHead>Harga</TableHead>
             <TableHead>Kategori</TableHead>
@@ -353,19 +331,11 @@ function hasLinks(links: any) {
         </TableHeader>
         <TableBody>
           <TableRow v-if="paginatedMarkets.length === 0">
-            <TableCell colspan="9" class="text-center py-8 text-muted-foreground">
+            <TableCell colspan="8" class="text-center py-8 text-muted-foreground">
               Tidak ada data produk
             </TableCell>
           </TableRow>
           <TableRow v-for="market in paginatedMarkets" :key="market.id">
-            <TableCell>
-              <img
-                :src="getImage(market.attachments)"
-                :alt="market.name"
-                class="w-12 h-12 object-cover rounded-md"
-                @error="$event.target.src = '/placeholder-image.jpg'"
-              />
-            </TableCell>
             <TableCell class="font-medium">
               <div>
                 <p class="font-semibold">{{ market.name }}</p>
@@ -393,24 +363,19 @@ function hasLinks(links: any) {
               </div>
             </TableCell>
             <TableCell>
-              <div class="flex items-center space-x-2">
-                <Select
-                  :model-value="market.status?.toLowerCase() || 'pending'"
-                  @update:model-value="updateStatus(market.id, $event)"
-                >
-                  <SelectTrigger
-                    class="w-32 h-8"
-                    :class="getStatusBadgeColor(market.status) + ' border rounded px-2 py-1 flex items-center justify-between'"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <Select
+                :model-value="market.status?.toLowerCase() || 'pending'"
+                @update:model-value="updateStatus(market.id, $event)"
+              >
+                <SelectTrigger class="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
             </TableCell>
             <TableCell>
               <div v-if="hasLinks(market.links)" class="flex space-x-1">
