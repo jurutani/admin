@@ -314,7 +314,7 @@ onUnmounted(() => {
             @click="goBack"
           >
             <ArrowLeft class="w-5 h-5" />
-            <span class="font-medium">Kembali ke Room Chat</span>
+            <span class="font-medium">Kembali ke Chat</span>
           </Button>
           <div class="flex items-center gap-2 text-foreground">
             <Newspaper class="w-5 h-5" />
