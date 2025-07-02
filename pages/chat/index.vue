@@ -182,14 +182,7 @@ useHead({
     <Card class="rounded-none border-l-0 border-r-0 border-t-0">
       <CardContent class="flex items-center justify-between p-4">
         <div class="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            @click="router.push('/discussions')"
-            aria-label="Kembali"
-          >
-            <ArrowLeft class="h-4 w-4" />
-          </Button>
+
           <div>
             <h1 class="text-lg font-semibold">Chat</h1>
             <p class="text-sm text-muted-foreground">Konsultasi dengan ahli</p>
@@ -255,39 +248,24 @@ useHead({
             
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 mb-1">
-                <p class="font-medium truncate">
-                  {{ getPartner(conversation)?.full_name }}
-                </p>
-                <Badge 
-                  v-if="getPartner(conversation)?.role === 'pakar'"
-                  variant="secondary"
-                  class="text-xs"
-                >
-                  Pakar
-                </Badge>
-                <Badge 
-                  v-else-if="getPartner(conversation)?.role === 'penyuluh'"
-                  variant="secondary"
-                  class="text-xs"
-                >
-                  Penyuluh
-                </Badge>
-                <Badge 
-                  v-else-if="getPartner(conversation)?.role === 'admin'"
-                  variant="secondary"
-                  class="text-xs"
-                >
-                  Admin
-                </Badge>
+              <p class="font-medium truncate">
+                {{ getPartner(conversation)?.full_name }}
+              </p>
+              <Badge
+                :variant="getPartner(conversation)?.role === 'petani' ? 'outline' : 'secondary'"
+                class="text-xs"
+              >
+                {{ getPartner(conversation)?.role?.charAt(0).toUpperCase() + getPartner(conversation)?.role?.slice(1) }}
+              </Badge>
               </div>
               
               <div class="flex items-center justify-between">
-                <p class="text-sm text-muted-foreground truncate">
-                  {{ truncateMessage(conversation.last_message || 'Belum ada pesan', 50) }}
-                </p>
-                <span class="text-xs text-muted-foreground ml-2">
-                  {{ formatLastMessageTime(conversation.last_message_at) }}
-                </span>
+              <p class="text-sm text-muted-foreground truncate">
+                {{ truncateMessage(conversation.last_message || 'Belum ada pesan', 50) }}
+              </p>
+              <span class="text-xs text-muted-foreground ml-2">
+                {{ formatLastMessageTime(conversation.last_message_at) }}
+              </span>
               </div>
             </div>
 
