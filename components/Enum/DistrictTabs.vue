@@ -58,12 +58,8 @@ const loadDistricts = async () => {
       console.error('Error loading districts:', error)
     } else {
       districts.value = data || []
-      
-      // Extract unique provinces
       const uniqueProvinces = [...new Set(districts.value.map(d => d.province))]
       provinces.value = uniqueProvinces.sort()
-      
-      // Set default province to first one
       if (provinces.value.length > 0 && !selectedProvince.value) {
         selectedProvince.value = provinces.value[0]
       }
@@ -88,8 +84,8 @@ const openCreateDialog = () => {
 
 // Create new district
 const createDistrict = async () => {
-  const provinceToUse = formData.value.useExistingProvince 
-    ? formData.value.province 
+  const provinceToUse = formData.value.useExistingProvince
+    ? formData.value.province
     : formData.value.newProvince
 
   if (!formData.value.name || !provinceToUse) return
