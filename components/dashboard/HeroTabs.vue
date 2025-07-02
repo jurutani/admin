@@ -20,7 +20,7 @@ const form = ref({
   button_text: '',
   button_link: '',
   image_url: '',
-  status: 'active'
+  status: 'active',
 })
 
 // File input ref
@@ -389,7 +389,6 @@ onMounted(() => {
               id="button_link"
               v-model="form.button_link"
               placeholder="Masukkan link tombol"
-              type="url"
             />
           </div>
 

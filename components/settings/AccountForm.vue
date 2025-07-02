@@ -1,186 +1,335 @@
 <script setup lang="ts">
-import { cn } from '@/lib/utils'
-import { CalendarDate, DateFormatter, getLocalTimeZone, today } from '@internationalized/date'
+import { ref, computed } from 'vue'
 import { toTypedSchema } from '@vee-validate/zod'
-import { Check, ChevronsUpDown } from 'lucide-vue-next'
-import { toDate } from 'radix-vue/date'
-import { h, ref } from 'vue'
+import { useForm } from 'vee-validate'
 import * as z from 'zod'
 import { toast } from '~/components/ui/toast'
+import { useAuth } from '~/composables/useAuth'
 
-const open = ref(false)
-const dateValue = ref()
-const placeholder = ref()
+// Auth composable
+const { user, updatePassword } = useAuth()
 
-const languages = [
-  { label: 'English', value: 'en' },
-  { label: 'French', value: 'fr' },
-  { label: 'German', value: 'de' },
-  { label: 'Indonesia', value: 'id' },
-  { label: 'Spanish', value: 'es' },
-  { label: 'Portuguese', value: 'pt' },
-  { label: 'Russian', value: 'ru' },
-  { label: 'Japanese', value: 'ja' },
-  { label: 'Korean', value: 'ko' },
-  { label: 'Chinese', value: 'zh' },
-] as const
+// Local loading state
+const isUpdating = ref(false)
 
-const df = new DateFormatter('en-US', {
-  dateStyle: 'long',
-})
+// Show/hide password states
+const showCurrentPassword = ref(false)
+const showNewPassword = ref(false)
+const showConfirmPassword = ref(false)
 
-const accountFormSchema = toTypedSchema(z.object({
-  name: z
-    .string({
-      required_error: 'Required.',
-    })
-    .min(2, {
-      message: 'Name must be at least 2 characters.',
-    })
-    .max(30, {
-      message: 'Name must not be longer than 30 characters.',
+// Password form schema
+const passwordFormSchema = toTypedSchema(z.object({
+  current_password: z
+    .string()
+    .min(1, { message: 'Password saat ini harus diisi' }),
+  new_password: z
+    .string()
+    .min(8, { message: 'Password baru harus minimal 8 karakter' })
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+      message: 'Password harus mengandung huruf kecil, huruf besar, dan angka'
     }),
-  dob: z.string().datetime().optional().refine(date => date !== undefined, 'Please select a valid date.'),
-  language: z.string().min(1, 'Please select a language.'),
+  confirm_password: z
+    .string()
+    .min(1, { message: 'Konfirmasi password harus diisi' })
+}).refine((data) => data.new_password === data.confirm_password, {
+  message: 'Konfirmasi password tidak cocok',
+  path: ['confirm_password']
 }))
 
-async function onSubmit(values: any) {
-  toast({
-    title: 'You submitted the following values:',
-    description: h('pre', { class: 'mt-2 w-[340px] rounded-md bg-slate-950 p-4' }, h('code', { class: 'text-white' }, JSON.stringify(values, null, 2))),
-  })
+// Form setup
+const { handleSubmit, resetForm, values } = useForm({
+  validationSchema: passwordFormSchema,
+  initialValues: {
+    current_password: '',
+    new_password: '',
+    confirm_password: ''
+  }
+})
+
+// Submit handler
+const onSubmit = handleSubmit(async (values) => {
+  if (!user.value) {
+    toast({
+      title: 'Error',
+      description: 'Anda harus login terlebih dahulu',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  try {
+    isUpdating.value = true
+
+    // Update password using auth composable
+    const result = await updatePassword({
+      currentPassword: values.current_password,
+      newPassword: values.new_password
+    })
+
+    if (result.success) {
+      // Reset form on success
+      resetForm()
+      
+      // Hide all password fields
+      showCurrentPassword.value = false
+      showNewPassword.value = false
+      showConfirmPassword.value = false
+
+      toast({
+        title: 'Berhasil!',
+        description: 'Password berhasil diperbarui',
+      })
+    } else {
+      toast({
+        title: 'Gagal',
+        description: result.error || 'Terjadi kesalahan saat memperbarui password',
+        variant: 'destructive',
+      })
+    }
+  } catch (error) {
+    console.error('Error updating password:', error)
+    toast({
+      title: 'Gagal',
+      description: 'Terjadi kesalahan saat memperbarui password',
+      variant: 'destructive',
+    })
+  } finally {
+    isUpdating.value = false
+  }
+})
+
+// Reset form
+const handleReset = () => {
+  resetForm()
+  showCurrentPassword.value = false
+  showNewPassword.value = false
+  showConfirmPassword.value = false
 }
+
+// Password strength indicator
+const passwordStrength = computed(() => {
+  const password = values.new_password || ''
+  let score = 0
+  
+  if (password.length >= 8) score++
+  if (/[a-z]/.test(password)) score++
+  if (/[A-Z]/.test(password)) score++
+  if (/\d/.test(password)) score++
+  if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) score++
+  
+  if (score < 2) return { text: 'Lemah', color: 'text-red-500', width: '20%' }
+  if (score < 4) return { text: 'Sedang', color: 'text-yellow-500', width: '60%' }
+  return { text: 'Kuat', color: 'text-green-500', width: '100%' }
+})
 </script>
 
 <template>
-  <div>
-    <h3 class="text-lg font-medium">
-      Account
-    </h3>
-    <p class="text-sm text-muted-foreground">
-      Update your account settings. Set your preferred language and timezone.
-    </p>
-  </div>
-  <Separator />
-  <Form v-slot="{ setFieldValue }" :validation-schema="accountFormSchema" class="space-y-8" @submit="onSubmit">
-    <FormField v-slot="{ componentField }" name="name">
-      <FormItem>
-        <FormLabel>Name</FormLabel>
-        <FormControl>
-          <Input type="text" placeholder="Your name" v-bind="componentField" />
-        </FormControl>
-        <FormDescription>
-          This is the name that will be displayed on your profile and in emails.
-        </FormDescription>
-        <FormMessage />
-      </FormItem>
-    </FormField>
+  <div class="max-w-md mx-auto">
+    <div class="space-y-6">
+      <!-- Header -->
+      <div class="text-center">
+        <h3 class="text-lg font-semibold">Ubah Password</h3>
+        <p class="text-sm text-muted-foreground">
+          Pastikan password baru Anda aman dan mudah diingat
+        </p>
+      </div>
 
-    <FormField v-slot="{ field, value }" name="dob">
-      <FormItem class="flex flex-col">
-        <FormLabel>Date of birth</FormLabel>
-        <Popover>
-          <PopoverTrigger as-child>
+      <!-- Form -->
+      <form @submit="onSubmit" class="space-y-4">
+        <!-- Current Password -->
+        <FormField v-slot="{ componentField }" name="current_password">
+          <FormItem>
+            <FormLabel>Password Saat Ini</FormLabel>
             <FormControl>
-              <Button
-                variant="outline" :class="cn(
-                  'w-[240px] justify-start text-left font-normal',
-                  !value && 'text-muted-foreground',
-                )"
-              >
-                <Icon name="i-radix-icons-calendar" class="mr-2 h-4 w-4 opacity-50" />
-                <span>{{ value ? df.format(toDate(dateValue, getLocalTimeZone())) : "Pick a date" }}</span>
-              </Button>
+              <div class="relative">
+                <Input 
+                  :type="showCurrentPassword ? 'text' : 'password'"
+                  placeholder="Masukkan password saat ini" 
+                  v-bind="componentField" 
+                  :disabled="isUpdating"
+                  class="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  class="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  @click="showCurrentPassword = !showCurrentPassword"
+                  :disabled="isUpdating"
+                >
+                  <Icon 
+                    :name="showCurrentPassword ? 'lucide:eye-off' : 'lucide:eye'" 
+                    class="h-4 w-4 text-muted-foreground" 
+                  />
+                </Button>
+              </div>
             </FormControl>
-          </PopoverTrigger>
-          <PopoverContent class="p-0">
-            <Calendar
-              v-model:placeholder="placeholder"
-              v-model="dateValue"
-              calendar-label="Date of birth"
-              initial-focus
-              :min-value="new CalendarDate(1900, 1, 1)"
-              :max-value="today(getLocalTimeZone())"
-              @update:model-value="(v: any) => {
-                if (v) {
-                  dateValue = v
-                  setFieldValue('dob', toDate(v).toISOString())
-                }
-                else {
-                  dateValue = undefined
-                  setFieldValue('dob', undefined)
-                }
-              }"
-            />
-          </PopoverContent>
-        </Popover>
-        <FormDescription>
-          Your date of birth is used to calculate your age.
-        </FormDescription>
-        <FormMessage />
-      </FormItem>
-      <input type="hidden" v-bind="field">
-    </FormField>
+            <FormMessage />
+          </FormItem>
+        </FormField>
 
-    <FormField v-slot="{ value }" name="language">
-      <FormItem class="flex flex-col">
-        <FormLabel>Language</FormLabel>
-
-        <Popover v-model:open="open">
-          <PopoverTrigger as-child>
+        <!-- New Password -->
+        <FormField v-slot="{ componentField }" name="new_password">
+          <FormItem>
+            <FormLabel>Password Baru</FormLabel>
             <FormControl>
-              <Button
-                variant="outline" role="combobox" :aria-expanded="open" :class="cn(
-                  'w-[200px] justify-between',
-                  !value && 'text-muted-foreground',
-                )"
-              >
-                {{ value ? languages.find(
-                  (language) => language.value === value,
-                )?.label : 'Select language...' }}
-
-                <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
+              <div class="relative">
+                <Input 
+                  :type="showNewPassword ? 'text' : 'password'"
+                  placeholder="Masukkan password baru" 
+                  v-bind="componentField" 
+                  :disabled="isUpdating"
+                  class="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  class="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  @click="showNewPassword = !showNewPassword"
+                  :disabled="isUpdating"
+                >
+                  <Icon 
+                    :name="showNewPassword ? 'lucide:eye-off' : 'lucide:eye'" 
+                    class="h-4 w-4 text-muted-foreground" 
+                  />
+                </Button>
+              </div>
             </FormControl>
-          </PopoverTrigger>
-          <PopoverContent class="w-[200px] p-0">
-            <Command>
-              <CommandInput placeholder="Search language..." />
-              <CommandEmpty>No language found.</CommandEmpty>
-              <CommandList>
-                <CommandGroup>
-                  <CommandItem
-                    v-for="language in languages" :key="language.value" :value="language.label"
-                    @select="() => {
-                      setFieldValue('language', language.value)
-                      open = false
-                    }"
-                  >
-                    <Check
-                      :class="cn(
-                        'mr-2 h-4 w-4',
-                        value === language.value ? 'opacity-100' : 'opacity-0',
-                      )"
-                    />
-                    {{ language.label }}
-                  </CommandItem>
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+            
+            <!-- Password Strength Indicator -->
+            <div v-if="values.new_password" class="mt-2">
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-muted-foreground">Kekuatan Password:</span>
+                <span :class="passwordStrength.color">{{ passwordStrength.text }}</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  class="h-2 rounded-full transition-all duration-300"
+                  :class="{
+                    'bg-red-500': passwordStrength.text === 'Lemah',
+                    'bg-yellow-500': passwordStrength.text === 'Sedang',
+                    'bg-green-500': passwordStrength.text === 'Kuat'
+                  }"
+                  :style="{ width: passwordStrength.width }"
+                ></div>
+              </div>
+            </div>
+            
+            <FormMessage />
+          </FormItem>
+        </FormField>
 
-        <FormDescription>
-          This is the language that will be used in the dashboard.
-        </FormDescription>
-        <FormMessage />
-      </FormItem>
-    </FormField>
+        <!-- Confirm Password -->
+        <FormField v-slot="{ componentField }" name="confirm_password">
+          <FormItem>
+            <FormLabel>Konfirmasi Password Baru</FormLabel>
+            <FormControl>
+              <div class="relative">
+                <Input 
+                  :type="showConfirmPassword ? 'text' : 'password'"
+                  placeholder="Konfirmasi password baru" 
+                  v-bind="componentField" 
+                  :disabled="isUpdating"
+                  class="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  class="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  @click="showConfirmPassword = !showConfirmPassword"
+                  :disabled="isUpdating"
+                >
+                  <Icon 
+                    :name="showConfirmPassword ? 'lucide:eye-off' : 'lucide:eye'" 
+                    class="h-4 w-4 text-muted-foreground" 
+                  />
+                </Button>
+              </div>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        </FormField>
 
-    <div class="flex justify-start">
-      <Button type="submit">
-        Update account
-      </Button>
+        <!-- Password Requirements -->
+        <div class="text-xs text-muted-foreground bg-muted p-3 rounded-md">
+          <p class="font-medium mb-1">Password harus memenuhi:</p>
+          <ul class="space-y-1">
+            <li class="flex items-center gap-2">
+              <Icon 
+                name="lucide:check" 
+                class="h-3 w-3"
+                :class="values.new_password && values.new_password.length >= 8 ? 'text-green-500' : 'text-gray-400'"
+              />
+              Minimal 8 karakter
+            </li>
+            <li class="flex items-center gap-2">
+              <Icon 
+                name="lucide:check" 
+                class="h-3 w-3"
+                :class="values.new_password && /[a-z]/.test(values.new_password) ? 'text-green-500' : 'text-gray-400'"
+              />
+              Mengandung huruf kecil
+            </li>
+            <li class="flex items-center gap-2">
+              <Icon 
+                name="lucide:check" 
+                class="h-3 w-3"
+                :class="values.new_password && /[A-Z]/.test(values.new_password) ? 'text-green-500' : 'text-gray-400'"
+              />
+              Mengandung huruf besar
+            </li>
+            <li class="flex items-center gap-2">
+              <Icon 
+                name="lucide:check" 
+                class="h-3 w-3"
+                :class="values.new_password && /\d/.test(values.new_password) ? 'text-green-500' : 'text-gray-400'"
+              />
+              Mengandung angka
+            </li>
+          </ul>
+        </div>
+
+        <!-- Form Actions -->
+        <div class="flex gap-2 pt-2">
+          <Button 
+            type="submit" 
+            :disabled="isUpdating"
+            class="flex-1"
+          >
+            <div v-if="isUpdating" class="flex items-center space-x-2">
+              <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+              <span>Memperbarui...</span>
+            </div>
+            <span v-else>Ubah Password</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            @click="handleReset"
+            :disabled="isUpdating"
+          >
+            Reset
+          </Button>
+        </div>
+      </form>
+
+      <!-- Security Tips -->
+      <div class="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+        <div class="flex items-start gap-3">
+          <Icon name="lucide:shield-check" class="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div class="text-sm">
+            <p class="font-medium text-blue-900 dark:text-blue-100 mb-1">Tips Keamanan:</p>
+            <ul class="text-blue-700 dark:text-blue-200 space-y-1">
+              <li>• Gunakan kombinasi huruf, angka, dan simbol</li>
+              <li>• Jangan gunakan informasi pribadi</li>
+              <li>• Gunakan password yang berbeda untuk setiap akun</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
-  </Form>
+  </div>
 </template>
