@@ -460,24 +460,6 @@ function onExpertAdded() {
         </Button>
       </div>
     </div>
-
-    <!-- Debug Data Preview -->
-    <details class="bg-gray-50 p-4 rounded-lg">
-      <summary class="cursor-pointer font-medium text-gray-700 mb-2">
-        Debug: Preview Data ({{ experts?.length || 0 }} records) - Filter: {{ statusFilter }} | Kategori: {{ categoryFilter }}
-      </summary>
-      <div class="text-xs mb-2 space-y-1">
-        <p><strong>Total Semua:</strong> {{ totalAllCount }}</p>
-        <p><strong>Total Aktif:</strong> {{ totalExpertsCount }}</p>
-        <p><strong>Total Dihapus:</strong> {{ totalDeletedCount }}</p>
-        <p><strong>Filter Status:</strong> {{ statusFilter }}</p>
-        <p><strong>Filter Kategori:</strong> {{ categoryFilter }}</p>
-        <p><strong>Data Ditampilkan:</strong> {{ filteredCount }}</p>
-        <p><strong>Kategori Tersedia:</strong> {{ availableCategories.join(', ') }}</p>
-      </div>
-      <pre class="text-xs bg-white p-3 rounded border overflow-auto max-h-60">{{ JSON.stringify(experts, null, 2) }}</pre>
-    </details>
-
     <!-- Loading State -->
     <div v-if="expertsPending" class="flex items-center justify-center p-8">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
