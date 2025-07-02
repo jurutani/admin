@@ -3,10 +3,10 @@
     <div class="flex flex-wrap items-end justify-between gap-2">
       <div>
         <h2 class="text-2xl font-bold tracking-tight">
-          Resource Videos
+          Resource jurutani
         </h2>
         <p class="text-muted-foreground">
-          ini adalah data dari News yang ada di dashboard juru tani
+          Halaman ini berisi berbagai sumber daya yang dapat membantu Anda dalam mengelola dan memahami pertanian berkelanjutan.
         </p>
       </div>
     </div>

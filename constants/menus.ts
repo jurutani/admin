@@ -19,16 +19,6 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-bar-chart-2',
         link: '/markets',
       },
-    ],
-  },
-  {
-    heading: 'Discussions',
-    items: [
-      {
-        title: 'Forum',
-        icon: 'i-lucide-message-square',
-        link: '/forum',
-      },
       {
         title: 'Chat',
         icon: 'i-lucide-message-circle',
@@ -57,6 +47,26 @@ export const navMenu: NavMenu[] = [
     ],
   },
   {
+    heading: 'Users',
+    items: [
+      {
+        title: 'Petani',
+        icon: 'i-lucide-users-round',
+        link: '/users',
+      },
+      {
+        title: 'Penyuluh',
+        icon: 'i-lucide-megaphone',
+        link: '/users/instructors',
+      },
+      {
+        title: 'Pakar',
+        icon: 'i-lucide-graduation-cap',
+        link: '/users/experts',
+      },
+    ],
+  },
+  {
     heading: 'Admin',
     items: [
       {
@@ -68,28 +78,6 @@ export const navMenu: NavMenu[] = [
         title: 'Enum',
         icon: 'i-lucide-list-check',
         link: '/enum',
-      },
-      {
-        title: 'Users',
-        icon: 'i-lucide-users',
-        new: true,
-        children: [
-          {
-            title: 'Petani',
-            icon: 'i-lucide-circle',
-            link: '/users',
-          },
-          {
-            title: 'Pakar',
-            icon: 'i-lucide-circle',
-            link: '/users/experts',
-          },
-          {
-            title: 'Penyuluh',
-            icon: 'i-lucide-circle',
-            link: '/users/instructors',
-          },
-        ],
       },
     ],
   },
