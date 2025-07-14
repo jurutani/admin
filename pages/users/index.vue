@@ -342,7 +342,7 @@ watch([statusFilter], () => {
           <div>
             <p class="text-sm font-medium text-gray-600">Dihapus</p>
             <p class="text-xl md:text-2xl font-bold text-red-600">{{ totalDeletedCount }}</p>
-            <p class="text-xs text-gray-500 mt-1">Non-aktif</p>
+            <p class="text-xs text-gray-500 mt-1">Nonaktif</p>
           </div>
           <Trash2 class="h-6 w-6 md:h-8 md:w-8 text-red-600" />
         </div>
