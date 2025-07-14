@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { ref, computed, onMounted, watch } from 'vue'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useToast } from '@/components/ui/toast'
@@ -14,7 +13,7 @@ import { Check, ChevronsUpDown, User, Loader2, MapPin } from 'lucide-vue-next'
 const supabase = useSupabaseClient()
 const { toast } = useToast()
 
-// Props dan Emits
+// Props & Emits
 const props = defineProps<{
   open: boolean
   instructorItem?: any
@@ -25,30 +24,16 @@ const emit = defineEmits<{
   (e: 'success'): void
 }>()
 
-// Types
-interface User {
-  id: string
-  full_name: string
-  avatar_url?: string
-  role?: string
-  email?: string
-}
-
-interface District {
-  id: string
-  name: string
-  province: string
-}
-
-// State management
-const districts = ref<District[]>([])
-const users = ref<User[]>([])
+// State
+const districts = ref([])
+const users = ref([])
 const loading = ref(false)
 const userSearch = ref('')
 const userOpen = ref(false)
 const searchingUsers = ref(false)
 const districtOpen = ref(false)
 const districtSearch = ref('')
+const searchTimeout = ref(null)
 
 const form = ref({
   user_id: '',
@@ -57,20 +42,14 @@ const form = ref({
   note: ''
 })
 
-// Computed properties
+// Computed
 const isEdit = computed(() => !!props.instructorItem)
-
-const selectedUser = computed(() => {
-  return users.value.find(user => user.id === form.value.user_id)
-})
-
-const selectedDistrict = computed(() => {
-  return districts.value.find(district => district.name === form.value.district)
-})
+const selectedUser = computed(() => users.value.find(user => user.id === form.value.user_id))
+const selectedDistrict = computed(() => districts.value.find(district => district.name === form.value.district))
+const isFormValid = computed(() => form.value.user_id && form.value.district && form.value.province)
 
 const filteredDistricts = computed(() => {
   if (!districtSearch.value.trim()) return districts.value
-  
   const search = districtSearch.value.toLowerCase()
   return districts.value.filter(district => 
     district.name.toLowerCase().includes(search) ||
@@ -78,148 +57,53 @@ const filteredDistricts = computed(() => {
   )
 })
 
-const isFormValid = computed(() => {
-  return form.value.user_id.trim() !== '' && 
-         form.value.district.trim() !== '' && 
-         form.value.province.trim() !== ''
-})
+// Methods
+const searchUsers = async (searchTerm = '') => {
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  
+  searchTimeout.value = setTimeout(async () => {
+    try {
+      searchingUsers.value = true
+      
+      let query = supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, email')
+        .eq('role', 'petani')
+        .order('full_name')
+        .limit(20)
 
-// Search optimization dengan AbortController
-let searchController: AbortController | null = null
-let searchTimeout: NodeJS.Timeout | null = null
+      if (searchTerm.trim()) {
+        query = query.ilike('full_name', `%${searchTerm}%`)
+      }
 
-// Debounced search function
-const debouncedSearch = (searchTerm: string, delay = 300) => {
-  return new Promise<void>((resolve) => {
-    // Clear previous timeout
-    if (searchTimeout) {
-      clearTimeout(searchTimeout)
+      const { data, error } = await query
+      if (error) throw error
+      
+      users.value = data || []
+    } catch (error) {
+      console.error('Error searching users:', error)
+      toast({
+        title: "Error",
+        description: "Gagal mencari user",
+        variant: "destructive"
+      })
+    } finally {
+      searchingUsers.value = false
     }
-    
-    searchTimeout = setTimeout(async () => {
-      await performSearch(searchTerm)
-      resolve()
-    }, delay)
-  })
+  }, 300)
 }
 
-// Optimized search function dengan abort controller
-async function performSearch(searchTerm = '') {
-  try {
-    // Abort previous search if still running
-    if (searchController) {
-      searchController.abort()
-    }
-    
-    // Create new controller for this search
-    searchController = new AbortController()
-    searchingUsers.value = true
-    
-    // Build query - simplified without abortSignal for compatibility
-    let query = supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url, role, email')
-      .eq('role', 'petani')
-      .order('full_name', { ascending: true })
-      .limit(20)
-
-    // Apply search filter
-    if (searchTerm && searchTerm.length > 0) {
-      // Simple ilike search for full_name only (more reliable)
-      query = query.ilike('full_name', `%${searchTerm}%`)
-    }
-
-    const { data, error } = await query
-
-    // Check if request was aborted
-    if (searchController && searchController.signal.aborted) {
-      return
-    }
-
-    if (error) throw error
-    
-    users.value = data || []
-    console.log('Users found:', users.value.length, 'Search term:', searchTerm)
-    
-  } catch (error: any) {
-    // Ignore abort errors
-    if (error.name === 'AbortError') {
-      return
-    }
-    
-    console.error('Error searching users:', error)
-    toast({
-      title: "Error",
-      description: "Gagal mencari user",
-      variant: "destructive"
-    })
-  } finally {
-    searchingUsers.value = false
-    searchController = null
-  }
-}
-
-// Watchers
-watch(userSearch, async (newSearch) => {
-  const trimmedSearch = newSearch.trim()
-  await debouncedSearch(trimmedSearch)
-})
-
-watch(() => props.instructorItem, (newItem) => {
-  if (newItem) {
-    form.value = {
-      user_id: newItem.user_id || '',
-      district: newItem.district || '',
-      province: newItem.province || '',
-      note: newItem.note || ''
-    }
-    
-    // Load user data if editing
-    if (newItem.user_id) {
-      loadUserById(newItem.user_id)
-    }
-  } else {
-    resetForm()
-  }
-}, { immediate: true })
-
-// Watch district selection to auto-fill province
-watch(() => form.value.district, (newDistrict) => {
-  const district = districts.value.find(d => d.name === newDistrict)
-  if (district) {
-    form.value.province = district.province
-  }
-})
-
-// Lifecycle hooks
-onMounted(async () => {
-  await Promise.all([
-    fetchDistricts(),
-    performSearch() // Load initial users
-  ])
-})
-
-onUnmounted(() => {
-  // Cleanup
-  if (searchTimeout) {
-    clearTimeout(searchTimeout)
-  }
-  if (searchController) {
-    searchController.abort()
-  }
-})
-
-// API functions
-async function fetchDistricts() {
+const fetchDistricts = async () => {
   try {
     const { data, error } = await supabase
       .from('districts')
       .select('id, name, province')
-      .order('province', { ascending: true })
-      .order('name', { ascending: true })
+      .order('province')
+      .order('name')
 
     if (error) throw error
-    
     districts.value = data || []
   } catch (error) {
     console.error('Error fetching districts:', error)
@@ -231,32 +115,11 @@ async function fetchDistricts() {
   }
 }
 
-async function loadUserById(userId: string) {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url, role, email')
-      .eq('role', 'petani')
-      .eq('id', userId)
-      .single()
-
-    if (error) throw error
-    
-    // Add user to list if not already present
-    if (data && !users.value.find(u => u.id === data.id)) {
-      users.value.unshift(data)
-    }
-  } catch (error) {
-    console.error('Error loading user:', error)
-  }
-}
-
-// Form handling dengan upsert
-async function handleSubmit() {
+const handleSubmit = async () => {
   if (!isFormValid.value) {
     toast({
       title: "Error",
-      description: "User, kabupaten/kota, dan provinsi harus dipilih",
+      description: "Semua field wajib harus diisi",
       variant: "destructive"
     })
     return
@@ -267,52 +130,48 @@ async function handleSubmit() {
   try {
     const now = new Date().toISOString()
     
-    // Prepare instructor data
+    // 1. Save to instructors table
     const instructorData = {
       user_id: form.value.user_id,
       district: form.value.district,
       provinces: form.value.province,
       note: form.value.note,
-      updated_at: now,
-      created_at: now,
-      deleted_at: null,
+      updated_at: now
     }
 
-    // Add id for edit mode
     if (isEdit.value && props.instructorItem?.id) {
-      instructorData.id = props.instructorItem.id
+      // Update existing instructor
+      const { error } = await supabase
+        .from('instructors')
+        .update(instructorData)
+        .eq('id', props.instructorItem.id)
+      
+      if (error) throw error
+    } else {
+      // Create new instructor
+      const { error } = await supabase
+        .from('instructors')
+        .insert({ ...instructorData, created_at: now })
+      
+      if (error) throw error
     }
 
-    // Use upsert for instructors table
-    const { data: instructorResult, error: instructorError } = nst
-    await supabase
-      .from('instructors')
-      .upsert(instructorData, {
-        onConflict: 'user_id,district'
-      })
-      .select()
-
-    if (instructorError) throw instructorError
-
-    // Update user role to 'instruktur' 
-    const { error: profileError } = await supabase
+    // 2. Update user role to 'penyuluh'
+    const { error: roleError } = await supabase
       .from('profiles')
       .update({ 
-        role: 'instruktur',
+        role: 'penyuluh',
         updated_at: now
       })
       .eq('id', form.value.user_id)
 
-    // Profile update failure is not critical
-    if (profileError) {
-      console.warn('Warning: Failed to update user role:', profileError)
+    if (roleError) {
+      console.warn('Failed to update user role:', roleError)
     }
 
     toast({
       title: "Berhasil",
-      description: `Instruktur berhasil ${isEdit.value ? 'diperbarui' : 'ditambahkan'}${
-        !profileError ? ' dan role user diupdate ke instruktur' : ''
-      }`
+      description: `Penyuluh berhasil ${isEdit.value ? 'diperbarui' : 'ditambahkan'} dan role user diubah menjadi penyuluh`
     })
 
     emit('success')
@@ -323,7 +182,7 @@ async function handleSubmit() {
     console.error('Error saving instructor:', error)
     toast({
       title: "Error",
-      description: "Gagal menyimpan data instruktur",
+      description: "Gagal menyimpan data penyuluh",
       variant: "destructive"
     })
   } finally {
@@ -331,7 +190,7 @@ async function handleSubmit() {
   }
 }
 
-function resetForm() {
+const resetForm = () => {
   form.value = {
     user_id: '',
     district: '',
@@ -340,28 +199,55 @@ function resetForm() {
   }
   userSearch.value = ''
   districtSearch.value = ''
-  
-  // Reset users list to initial state
-  performSearch()
+  users.value = []
 }
 
-function selectUser(user: User) {
+const selectUser = (user) => {
   form.value.user_id = user.id
   userOpen.value = false
-  userSearch.value = user.full_name || user.email || ''
+  userSearch.value = user.full_name || user.email
 }
 
-function selectDistrict(district: District) {
+const selectDistrict = (district) => {
   form.value.district = district.name
   form.value.province = district.province
   districtOpen.value = false
   districtSearch.value = district.name
 }
 
-function handleDialogClose() {
+const handleDialogClose = () => {
   emit('update:open', false)
   resetForm()
 }
+
+// Watchers
+watch(userSearch, (newSearch) => {
+  searchUsers(newSearch.trim())
+})
+
+watch(() => props.instructorItem, (newItem) => {
+  if (newItem) {
+    form.value = {
+      user_id: newItem.user_id || '',
+      district: newItem.district || '',
+      province: newItem.provinces || '',
+      note: newItem.note || ''
+    }
+    
+    if (newItem.user_id) {
+      // Load user data for edit mode
+      searchUsers()
+    }
+  } else {
+    resetForm()
+  }
+}, { immediate: true })
+
+// Lifecycle
+onMounted(() => {
+  fetchDistricts()
+  searchUsers()
+})
 </script>
 
 <template>
@@ -369,7 +255,7 @@ function handleDialogClose() {
     <DialogContent class="max-w-2xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>
-          {{ isEdit ? 'Edit Instruktur' : 'Tambah Instruktur Baru' }}
+          {{ isEdit ? 'Edit Penyuluh' : 'Tambah Penyuluh Baru' }}
         </DialogTitle>
       </DialogHeader>
 
@@ -399,9 +285,6 @@ function handleDialogClose() {
                   <div class="flex-1 min-w-0 text-left">
                     <div v-if="selectedUser" class="truncate">
                       <span class="font-medium">{{ selectedUser.full_name || selectedUser.email }}</span>
-                      <span v-if="selectedUser.role" class="text-xs text-muted-foreground ml-2">
-                        ({{ selectedUser.role }})
-                      </span>
                     </div>
                     <span v-else class="text-muted-foreground">
                       Pilih user...
@@ -423,7 +306,7 @@ function handleDialogClose() {
                     <p class="mt-2 text-sm text-muted-foreground">Mencari user...</p>
                   </div>
                   <div v-else class="p-4 text-center">
-                    <p class="text-sm text-muted-foreground">
+                    <p class="text-sm text-muted-foresize">
                       {{ userSearch.trim() ? 'User tidak ditemukan.' : 'Ketik untuk mencari user.' }}
                     </p>
                   </div>
@@ -450,9 +333,6 @@ function handleDialogClose() {
                         <div class="flex-1 min-w-0">
                           <p class="font-medium truncate">{{ user.full_name }}</p>
                           <p class="text-xs text-muted-foreground truncate">{{ user.email }}</p>
-                          <p v-if="user.role" class="text-xs text-muted-foreground">
-                            Role: {{ user.role }}
-                          </p>
                         </div>
                         <Check
                           :class="[
@@ -467,9 +347,6 @@ function handleDialogClose() {
               </Command>
             </PopoverContent>
           </Popover>
-          <p class="text-xs text-muted-foreground">
-            Cari berdasarkan nama atau email user yang akan dijadikan instruktur
-          </p>
         </div>
 
         <!-- District Selection -->
@@ -505,7 +382,7 @@ function handleDialogClose() {
               <Command>
                 <CommandInput 
                   v-model="districtSearch"
-                  placeholder="Ketik nama kabupaten/kota atau provinsi..." 
+                  placeholder="Ketik nama kabupaten/kota..." 
                 />
                 <CommandEmpty>
                   <div class="p-4 text-center">
@@ -536,15 +413,12 @@ function handleDialogClose() {
                           ]"
                         />
                       </div>
-                    </CommandItem>
+                    </Commanditem>
                   </CommandList>
                 </CommandGroup>
               </Command>
             </PopoverContent>
           </Popover>
-          <p class="text-xs text-muted-foreground">
-            Pilih kabupaten/kota tempat instruktur akan bertugas
-          </p>
         </div>
 
         <!-- Province (Read-only) -->
@@ -557,9 +431,6 @@ function handleDialogClose() {
             :disabled="true"
             class="bg-gray-50"
           />
-          <p class="text-xs text-muted-foreground">
-            Provinsi akan terisi otomatis berdasarkan kabupaten/kota yang dipilih
-          </p>
         </div>
 
         <!-- Note -->
@@ -568,7 +439,7 @@ function handleDialogClose() {
           <Textarea
             id="note"
             v-model="form.note"
-            placeholder="Masukkan catatan tentang instruktur..."
+            placeholder="Masukkan catatan tentang penyuluh..."
             rows="4"
             :disabled="loading"
           />
@@ -599,3 +470,4 @@ function handleDialogClose() {
     </DialogContent>
   </Dialog>
 </template>
+

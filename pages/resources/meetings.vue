@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Loader2, Plus, Eye, Edit, Trash2, ChevronLeft, ChevronRight, Users, Calendar, FileText, Archive, User } from 'lucide-vue-next'
+import { Loader2, Plus, Eye, Edit, Trash2, ChevronLeft, ChevronRight, Users, Calendar, FileText, Archive, User, Image, Download } from 'lucide-vue-next'
 import { ref, onMounted, computed } from 'vue'
 import FormMeeting from '~/components/Dialog/FormMeeting.vue'
 import { Button } from '~/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '~/components/ui/alert-dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '~/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import { Badge } from '~/components/ui/badge'
 import { useToast } from '~/components/ui/toast'
@@ -12,7 +13,7 @@ import { useToast } from '~/components/ui/toast'
 const supabase = useSupabaseClient()
 const { toast } = useToast()
 
-const meetingList = ref<any[]>([])
+// Data refs
 const allMeetings = ref<any[]>([])
 const loading = ref(true)
 const showFormDialog = ref(false)
@@ -22,18 +23,24 @@ const deletingMeeting = ref(null)
 const archiveDialog = ref(false)
 const archivingMeeting = ref(null)
 
+// Preview dialogs
+const imagePreviewDialog = ref(false)
+const previewImageUrl = ref('')
+const attachmentsDialog = ref(false)
+const selectedAttachments = ref<string[]>([])
+const selectedMeetingId = ref('')
+
 // Pagination
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
 
-// Paginated meetings
+// Computed properties
 const paginatedMeetings = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
   const end = start + itemsPerPage.value
   return allMeetings.value.slice(start, end)
 })
 
-// Pagination info
 const totalPages = computed(() => {
   return Math.ceil(allMeetings.value.length / itemsPerPage.value)
 })
@@ -41,13 +48,20 @@ const totalPages = computed(() => {
 const paginationInfo = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value + 1
   const end = Math.min(currentPage.value * itemsPerPage.value, allMeetings.value.length)
+  return { start, end, total: allMeetings.value.length }
+})
+
+const statsData = computed(() => {
+  const today = new Date().toDateString()
   return {
-    start,
-    end,
-    total: allMeetings.value.length
+    total: allMeetings.value.length,
+    today: allMeetings.value.filter(m => new Date(m.created_at).toDateString() === today).length,
+    active: allMeetings.value.filter(m => !m.archived_at).length,
+    archived: allMeetings.value.filter(m => m.archived_at).length
   }
 })
 
+// Methods
 onMounted(async () => {
   await fetchMeetings()
 })
@@ -55,7 +69,7 @@ onMounted(async () => {
 async function fetchMeetings() {
   loading.value = true
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from('meetings')
       .select(`
         *,
@@ -64,14 +78,10 @@ async function fetchMeetings() {
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
-    const { data, error } = await query
-
     if (error) throw error
-    
     allMeetings.value = data || []
-    meetingList.value = paginatedMeetings.value
   } catch (error) {
-    console.error('Gagal memuat data:', error)
+    console.error('Error fetching meetings:', error)
     toast({
       title: 'Error',
       description: 'Gagal memuat data meeting',
@@ -102,10 +112,20 @@ function openArchiveDialog(meeting: any) {
   archiveDialog.value = true
 }
 
+function openImagePreview(imageUrl: string) {
+  previewImageUrl.value = imageUrl
+  imagePreviewDialog.value = true
+}
+
+function openAttachmentsDialog(meetingId: string, attachments: string[]) {
+  selectedMeetingId.value = meetingId
+  selectedAttachments.value = attachments
+  attachmentsDialog.value = true
+}
+
 async function confirmDelete() {
   if (!deletingMeeting.value) return
   try {
-    // Soft delete
     const { error } = await supabase
       .from('meetings')
       .update({
@@ -138,14 +158,12 @@ async function confirmArchive() {
   if (!archivingMeeting.value) return
   try {
     const isArchived = archivingMeeting.value.archived_at
-    const updateData = {
-      archived_at: isArchived ? null : new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-    
     const { error } = await supabase
       .from('meetings')
-      .update(updateData)
+      .update({
+        archived_at: isArchived ? null : new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
       .eq('id', archivingMeeting.value.id)
       
     if (error) throw error
@@ -200,10 +218,28 @@ function openLink(url: string) {
 }
 
 function downloadAttachment(meetingId: string, filename: string) {
-  // Implement download logic for attachments from bucket
   const bucketPath = `meetings/${meetingId}/${filename}`
-  // This would typically use Supabase storage download
-  console.log('Download attachment:', bucketPath)
+  // Download logic using Supabase storage
+  supabase.storage
+    .from('meetings')
+    .download(`${meetingId}/${filename}`)
+    .then(({ data, error }) => {
+      if (error) {
+        console.error('Download error:', error)
+        toast({
+          title: 'Error',
+          description: 'Gagal mendownload file',
+          variant: 'destructive',
+        })
+      } else {
+        const url = URL.createObjectURL(data)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    })
 }
 
 function getCategoryBadgeVariant(category: string) {
@@ -215,10 +251,18 @@ function getCategoryBadgeVariant(category: string) {
   }
   return variants[category] || 'default'
 }
+
+function getImageUrl(meetingId: string, imageName: string) {
+  return supabase.storage
+    .from('meetings')
+    .getPublicUrl(`${meetingId}/${imageName}`)
+    .data.publicUrl
+}
 </script>
 
 <template>
   <div class="p-6 space-y-6">
+    <!-- Header -->
     <div class="flex justify-between items-center">
       <div class="flex items-center space-x-2">
         <Users class="h-6 w-6" />
@@ -230,15 +274,15 @@ function getCategoryBadgeVariant(category: string) {
       </Button>
     </div>
     
-    <!-- Stats Card -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <!-- Stats Cards - 2x2 layout on mobile -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <Card>
         <CardHeader class="flex flex-row items-center justify-between pb-2 space-y-0">
           <CardTitle class="text-sm font-medium">Total Meeting</CardTitle>
           <Users class="w-4 h-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <p class="text-2xl font-bold">{{ allMeetings.length }}</p>
+          <p class="text-2xl font-bold">{{ statsData.total }}</p>
         </CardContent>
       </Card>
       
@@ -248,9 +292,7 @@ function getCategoryBadgeVariant(category: string) {
           <Calendar class="w-4 h-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <p class="text-2xl font-bold">
-            {{ allMeetings.filter(m => new Date(m.created_at).toDateString() === new Date().toDateString()).length }}
-          </p>
+          <p class="text-2xl font-bold">{{ statsData.today }}</p>
         </CardContent>
       </Card>
       
@@ -260,9 +302,7 @@ function getCategoryBadgeVariant(category: string) {
           <FileText class="w-4 h-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <p class="text-2xl font-bold">
-            {{ allMeetings.filter(m => !m.archived_at).length }}
-          </p>
+          <p class="text-2xl font-bold">{{ statsData.active }}</p>
         </CardContent>
       </Card>
       
@@ -272,13 +312,12 @@ function getCategoryBadgeVariant(category: string) {
           <Archive class="w-4 h-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <p class="text-2xl font-bold">
-            {{ allMeetings.filter(m => m.archived_at).length }}
-          </p>
+          <p class="text-2xl font-bold">{{ statsData.archived }}</p>
         </CardContent>
       </Card>
     </div>
     
+    <!-- Table -->
     <div class="border rounded-lg">
       <div v-if="loading" class="flex justify-center items-center py-8">
         <Loader2 class="h-6 w-6 animate-spin mr-2" />
@@ -287,13 +326,10 @@ function getCategoryBadgeVariant(category: string) {
       <Table v-else>
         <TableHeader>
           <TableRow>
-            <TableHead>Judul Meeting</TableHead>
-            <TableHead>Konten</TableHead>
-            <TableHead>Organisasi</TableHead>
+            <TableHead>Meeting</TableHead>
             <TableHead>Kategori</TableHead>
             <TableHead>Penulis</TableHead>
-            <TableHead>Link</TableHead>
-            <TableHead>Lampiran</TableHead>
+            <TableHead>Media</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Dibuat</TableHead>
             <TableHead class="text-right">Aksi</TableHead>
@@ -301,21 +337,19 @@ function getCategoryBadgeVariant(category: string) {
         </TableHeader>
         <TableBody>
           <TableRow v-if="paginatedMeetings.length === 0">
-            <TableCell colspan="10" class="text-center py-8 text-muted-foreground">
+            <TableCell colspan="7" class="text-center py-8 text-muted-foreground">
               Tidak ada data meeting
             </TableCell>
           </TableRow>
           <TableRow v-for="meeting in paginatedMeetings" :key="meeting.id">
             <TableCell class="font-medium">
-              <p class="font-semibold">{{ meeting.title }}</p>
-            </TableCell>
-            <TableCell>
-              <p class="text-sm text-muted-foreground">
-                {{ truncateText(meeting.content) }}
-              </p>
-            </TableCell>
-            <TableCell>
-              <p class="text-sm">{{ meeting.organization || '-' }}</p>
+              <div class="space-y-1">
+                <p class="font-semibold">{{ meeting.title }}</p>
+                <p class="text-sm text-muted-foreground">
+                  {{ truncateText(meeting.content) }}
+                </p>
+                <p class="text-xs text-muted-foreground">{{ meeting.organization || '-' }}</p>
+              </div>
             </TableCell>
             <TableCell>
               <Badge :variant="getCategoryBadgeVariant(meeting.category)">
@@ -325,51 +359,46 @@ function getCategoryBadgeVariant(category: string) {
             <TableCell>
               <div class="flex items-center space-x-2">
                 <User class="h-4 w-4 text-muted-foreground" />
-                <span class="text-sm">{{ meeting.author?.name || 'Unknown' }}</span>
+                <span class="text-sm">{{ meeting.author?.full_name || 'Unknown' }}</span>
               </div>
             </TableCell>
             <TableCell>
-              <Button
-                v-if="meeting.link"
-                variant="ghost"
-                size="sm"
-                @click="openLink(meeting.link)"
-                class="text-blue-600 hover:text-blue-700"
-              >
-                <Eye class="h-4 w-4 mr-1" />
-                Buka Link
-              </Button>
-              <span v-else class="text-muted-foreground text-sm">-</span>
-            </TableCell>
-            <TableCell>
-              <div v-if="meeting.attachments && meeting.attachments.length > 0" class="space-y-1">
+              <div class="flex space-x-2">
                 <Button
-                  v-for="attachment in meeting.attachments.slice(0, 2)"
-                  :key="attachment"
+                  v-if="meeting.image_url"
                   variant="ghost"
                   size="sm"
-                  @click="downloadAttachment(meeting.id, attachment)"
-                  class="text-xs p-1 h-auto"
+                  @click="openImagePreview(getImageUrl(meeting.id, meeting.image_url))"
                 >
-                  <FileText class="h-3 w-3 mr-1" />
-                  {{ attachment.length > 15 ? attachment.substring(0, 15) + '...' : attachment }}
+                  <Image class="h-4 w-4" />
                 </Button>
-                <p v-if="meeting.attachments.length > 2" class="text-xs text-muted-foreground">
-                  +{{ meeting.attachments.length - 2 }} lainnya
-                </p>
+                <Button
+                  v-if="meeting.attachments && meeting.attachments.length > 0"
+                  variant="ghost"
+                  size="sm"
+                  @click="openAttachmentsDialog(meeting.id, meeting.attachments)"
+                >
+                  <FileText class="h-4 w-4" />
+                  <span class="text-xs">{{ meeting.attachments.length }}</span>
+                </Button>
+                <Button
+                  v-if="meeting.link"
+                  variant="ghost"
+                  size="sm"
+                  @click="openLink(meeting.link)"
+                >
+                  <Eye class="h-4 w-4" />
+                </Button>
               </div>
-              <span v-else class="text-muted-foreground text-sm">-</span>
             </TableCell>
             <TableCell>
-              <div class="space-y-1">
-                <Badge v-if="meeting.archived_at" variant="secondary">
-                  <Archive class="h-3 w-3 mr-1" />
-                  Arsip
-                </Badge>
-                <Badge v-else variant="default">
-                  Aktif
-                </Badge>
-              </div>
+              <Badge v-if="meeting.archived_at" variant="secondary">
+                <Archive class="h-3 w-3 mr-1" />
+                Arsip
+              </Badge>
+              <Badge v-else variant="default">
+                Aktif
+              </Badge>
             </TableCell>
             <TableCell>
               <div class="flex items-center space-x-1">
@@ -378,15 +407,7 @@ function getCategoryBadgeVariant(category: string) {
               </div>
             </TableCell>
             <TableCell class="text-right">
-              <div class="flex justify-end space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  @click="openLink(meeting.link)"
-                  :disabled="!meeting.link"
-                >
-                  <Eye class="h-4 w-4" />
-                </Button>
+              <div class="flex justify-end space-x-1">
                 <Button
                   variant="outline"
                   size="sm"
@@ -443,18 +464,8 @@ function getCategoryBadgeVariant(category: string) {
             >
               {{ page }}
             </Button>
-            <span v-if="totalPages > 5" class="px-2 py-1 text-sm text-gray-500">
-              ...
-            </span>
-            <Button
-              v-if="totalPages > 5 && currentPage < totalPages - 2"
-              variant="outline"
-              size="sm"
-              @click="goToPage(totalPages)"
-            >
-              {{ totalPages }}
-            </Button>
           </div>
+          
           <Button
             variant="outline"
             size="sm"
@@ -475,6 +486,46 @@ function getCategoryBadgeVariant(category: string) {
       @update:open="showFormDialog = $event"
       @success="onFormSuccess"
     />
+    
+    <!-- Image Preview Dialog -->
+    <Dialog :open="imagePreviewDialog" @update:open="imagePreviewDialog = $event">
+      <DialogContent class="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Preview Gambar</DialogTitle>
+        </DialogHeader>
+        <div class="flex justify-center">
+          <img :src="previewImageUrl" alt="Preview" class="max-w-full max-h-96 object-contain" />
+        </div>
+      </DialogContent>
+    </Dialog>
+    
+    <!-- Attachments Dialog -->
+    <Dialog :open="attachmentsDialog" @update:open="attachmentsDialog = $event">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Lampiran</DialogTitle>
+        </DialogHeader>
+        <div class="space-y-2">
+          <div
+            v-for="attachment in selectedAttachments"
+            :key="attachment"
+            class="flex items-center justify-between p-3 border rounded-lg"
+          >
+            <div class="flex items-center space-x-3">
+              <FileText class="h-5 w-5 text-muted-foreground" />
+              <span class="text-sm">{{ attachment }}</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              @click="downloadAttachment(selectedMeetingId, attachment)"
+            >
+              <Download class="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
     
     <!-- Delete Dialog -->
     <AlertDialog :open="deleteDialog" @update:open="deleteDialog = $event">

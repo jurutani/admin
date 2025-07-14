@@ -1,22 +1,13 @@
 <script setup lang="ts">
-import { ArrowLeft, Edit, Trash2, UserCheck, MapPin, Phone, Mail, Calendar, User, Globe, FileText, RotateCcw } from 'lucide-vue-next'
+import { ArrowLeft, Save, RotateCcw, User, Mail, Phone, MapPin, Calendar, Globe, FileText, Camera, Upload } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Separator } from '@/components/ui/separator'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,18 +17,152 @@ const supabase = useSupabaseClient()
 const userId = route.params.id as string
 
 // Reactive states
-const deleteDialogOpen = ref(false)
 const loading = ref(false)
+const saving = ref(false)
+const isUploading = ref(false)
+const isRemoving = ref(false)
 
-// Function to get avatar URL from bucket
-function getAvatarUrl(avatarPath: string | null) {
-  if (!avatarPath) return null
+// File input ref
+const fileInput = ref<HTMLInputElement>()
+
+// Form data
+const formData = ref({
+  full_name: '',
+  username: '',
+  email: '',
+  phone: '',
+  address: '',
+  bio: '',
+  website: '',
+  birth_date: '',
+  avatar_url: ''
+})
+
+// Current avatar URL
+const currentAvatar = computed(() => formData.value.avatar_url || '')
+
+// Avatar upload handler
+const handleAvatarUpload = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
   
-  const { data } = supabase.storage
-    .from('avatars')
-    .getPublicUrl(`/${avatarPath}`)
-  
-  return data.publicUrl
+  if (!file) return
+
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    toast({
+      title: 'Error',
+      description: 'File harus berupa gambar',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  // Validate file size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    toast({
+      title: 'Error',
+      description: 'Ukuran file maksimal 5MB',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  try {
+    isUploading.value = true
+
+    // Get file extension
+    const fileExtension = file.name.split('.').pop() || 'jpg'
+    
+    // Create bucket path: avatars/{user_id}.{extension}
+    const bucketPath = `avatars/${userId}.${fileExtension}`
+
+    // Upload directly to storage bucket
+    const { data, error } = await supabase.storage
+      .from('avatars')
+      .upload(bucketPath, file, {
+        cacheControl: '3600',
+        upsert: true // Replace if exists
+      })
+
+    if (error) {
+      throw error
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(bucketPath)
+
+    const avatarUrl = urlData.publicUrl
+
+    // Update form data with new avatar URL
+    formData.value.avatar_url = avatarUrl
+
+    toast({
+      title: 'Berhasil!',
+      description: 'Avatar berhasil diperbarui',
+    })
+  } catch (error) {
+    console.error('Error uploading avatar:', error)
+    toast({
+      title: 'Gagal',
+      description: 'Terjadi kesalahan saat mengupload avatar',
+      variant: 'destructive',
+    })
+  } finally {
+    isUploading.value = false
+    // Reset file input
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
+  }
+}
+
+// Remove avatar
+const handleRemoveAvatar = async () => {
+  if (!currentAvatar.value) return
+
+  try {
+    isRemoving.value = true
+
+    // Remove from storage bucket
+    const currentPath = `avatars/${userId}`
+    
+    // Remove file from bucket (try common extensions)
+    const extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+    for (const ext of extensions) {
+      try {
+        await supabase.storage
+          .from('avatars')
+          .remove([`${currentPath}.${ext}`])
+      } catch (e) {
+        // Ignore errors, file might not exist with this extension
+      }
+    }
+
+    // Update form data to remove avatar
+    formData.value.avatar_url = ''
+
+    toast({
+      title: 'Berhasil!',
+      description: 'Avatar berhasil dihapus',
+    })
+  } catch (error) {
+    console.error('Error removing avatar:', error)
+    toast({
+      title: 'Gagal',
+      description: 'Terjadi kesalahan saat menghapus avatar',
+      variant: 'destructive',
+    })
+  } finally {
+    isRemoving.value = false
+  }
+}
+
+// Trigger file input
+const triggerUpload = () => {
+  fileInput.value?.click()
 }
 
 // Fetch user detail
@@ -58,11 +183,22 @@ async function fetchUserDetail() {
       throw new Error('User not found')
     }
 
-    // Process data to include avatar URL and status
+    // Set form data
+    formData.value = {
+      full_name: data.full_name || '',
+      username: data.username || '',
+      email: data.email || '',
+      phone: data.phone || '',
+      address: data.address || '',
+      bio: data.bio || '',
+      website: data.website || '',
+      birth_date: data.birth_date ? data.birth_date.split('T')[0] : '',
+      avatar_url: data.avatar_url || ''
+    }
+
+    // Process data to include status
     const processedData = {
       ...data,
-      email: data.email || '',
-      avatarUrl: getAvatarUrl(data.avatar_url),
       isActive: !data.deleted_at,
       isArchived: !!data.archived_at
     }
@@ -77,7 +213,7 @@ async function fetchUserDetail() {
 // Fetch user data
 const { data: userDetail, pending: userPending, error: userError, refresh: refreshUser } = await useAsyncData(
   `user-detail-${userId}`,
-  fetchUserDetail
+  fetchUserDetail,
 )
 
 // Redirect if user not found
@@ -100,15 +236,6 @@ function formatDate(date: string | null) {
   })
 }
 
-function formatDateOnly(date: string | null) {
-  if (!date) return 'Tidak tersedia'
-  return new Date(date).toLocaleDateString('id-ID', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-}
-
 function getInitials(name: string) {
   return name
     .split(' ')
@@ -122,16 +249,28 @@ function goBack() {
   router.back()
 }
 
-// User actions
-async function deleteUser() {
+// Update user function
+async function updateUser() {
   if (!userDetail.value) return
 
-  loading.value = true
+  saving.value = true
   try {
-    // Soft delete: update deleted_at
+    const updateData = {
+      full_name: formData.value.full_name,
+      username: formData.value.username,
+      email: formData.value.email,
+      phone: formData.value.phone,
+      address: formData.value.address,
+      bio: formData.value.bio,
+      website: formData.value.website,
+      birth_date: formData.value.birth_date || null,
+      avatar_url: formData.value.avatar_url,
+      updated_at: new Date().toISOString()
+    }
+
     const { error } = await supabase
       .from('profiles')
-      .update({ deleted_at: new Date().toISOString() })
+      .update(updateData)
       .eq('id', userId)
 
     if (error) {
@@ -140,96 +279,27 @@ async function deleteUser() {
 
     toast({
       title: 'Berhasil',
-      description: 'Petani berhasil dihapus dari sistem (soft delete)',
+      description: 'Data user berhasil diperbarui',
     })
 
     // Refresh data
     await refreshUser()
 
   } catch (error) {
-    console.error('Error deleting user:', error)
+    console.error('Error updating user:', error)
     toast({
       title: 'Gagal',
-      description: 'Terjadi kesalahan saat menghapus petani',
+      description: 'Terjadi kesalahan saat memperbarui data user',
       variant: 'destructive',
     })
   } finally {
-    loading.value = false
-    deleteDialogOpen.value = false
-  }
-}
-
-async function restoreUser() {
-  if (!userDetail.value) return
-
-  loading.value = true
-  try {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ deleted_at: null })
-      .eq('id', userId)
-
-    if (error) {
-      throw error
-    }
-
-    toast({
-      title: 'Berhasil',
-      description: 'Petani berhasil dipulihkan',
-    })
-
-    // Refresh data
-    await refreshUser()
-
-  } catch (error) {
-    console.error('Error restoring user:', error)
-    toast({
-      title: 'Gagal',
-      description: 'Terjadi kesalahan saat memulihkan petani',
-      variant: 'destructive',
-    })
-  } finally {
-    loading.value = false
-  }
-}
-
-async function archiveUser() {
-  if (!userDetail.value) return
-
-  loading.value = true
-  try {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ archived_at: new Date().toISOString() })
-      .eq('id', userId)
-
-    if (error) {
-      throw error
-    }
-
-    toast({
-      title: 'Berhasil',
-      description: 'Petani berhasil diarsipkan',
-    })
-
-    // Refresh data
-    await refreshUser()
-
-  } catch (error) {
-    console.error('Error archiving user:', error)
-    toast({
-      title: 'Gagal',
-      description: 'Terjadi kesalahan saat mengarsipkan petani',
-      variant: 'destructive',
-    })
-  } finally {
-    loading.value = false
+    saving.value = false
   }
 }
 
 // Set page title
 useHead({
-  title: `Detail Petani - ${userDetail.value?.full_name || 'Loading...'}`
+  title: `Detail User - ${userDetail.value?.full_name || 'Loading...'}`
 })
 </script>
 
@@ -242,8 +312,8 @@ useHead({
           <ArrowLeft class="h-4 w-4" />
         </Button>
         <div>
-          <h1 class="text-2xl font-bold">Detail Petani</h1>
-          <p class="text-sm text-gray-600">Informasi lengkap tentang petani</p>
+          <h1 class="text-2xl font-bold">Detail User</h1>
+          <p class="text-sm text-gray-600">Edit informasi user</p>
         </div>
       </div>
       
@@ -252,43 +322,112 @@ useHead({
           <RotateCcw class="h-4 w-4 mr-2" />
           {{ userPending ? 'Memuat...' : 'Refresh' }}
         </Button>
+        <Button @click="updateUser" :disabled="saving || userPending || isUploading || isRemoving">
+          <Save class="h-4 w-4 mr-2" />
+          {{ saving ? 'Menyimpan...' : 'Simpan' }}
+        </Button>
       </div>
     </div>
 
     <!-- Loading State -->
     <div v-if="userPending" class="flex items-center justify-center p-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      <span class="ml-2">Memuat detail petani...</span>
+      <span class="ml-2">Memuat detail user...</span>
     </div>
 
     <!-- Error State -->
     <div v-else-if="userError" class="p-8 bg-red-50 border border-red-200 rounded-lg text-center">
-      <p class="text-red-600 font-medium">Terjadi kesalahan saat memuat data petani</p>
+      <p class="text-red-600 font-medium">Terjadi kesalahan saat memuat data user</p>
       <p class="text-red-500 text-sm mt-1">{{ userError.message }}</p>
       <Button @click="refreshUser" class="mt-4" variant="outline" size="sm">
         Coba Lagi
       </Button>
     </div>
 
-    <!-- User Detail Content -->
-    <div v-else-if="userDetail" class="grid gap-6 md:grid-cols-3">
+    <!-- User Detail Form -->
+    <div v-else-if="userDetail" class="grid gap-6 md:grid-cols-4">
       <!-- Profile Card -->
       <div class="md:col-span-1">
         <Card>
           <CardHeader class="text-center pb-4">
-            <div class="flex justify-center mb-4">
-              <Avatar class="h-24 w-24">
-                <AvatarImage :src="userDetail.avatarUrl" :alt="userDetail.full_name" />
-                <AvatarFallback class="bg-green-100 text-green-700 text-xl">
-                  {{ getInitials(userDetail.full_name || 'User') }}
-                </AvatarFallback>
-              </Avatar>
+            <h3 class="text-lg font-medium mb-4">Foto Profile</h3>
+            <div class="flex flex-col items-center space-y-4">
+              <!-- Avatar Display -->
+              <div class="relative">
+                <!-- Avatar Image or Initials -->
+                <div class="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-100 flex items-center justify-center">
+                  <img 
+                    v-if="currentAvatar" 
+                    :src="currentAvatar" 
+                    :alt="userDetail.full_name || 'Avatar'"
+                    class="w-full h-full object-cover"
+                    @error="() => {}"
+                  />
+                  <div 
+                    v-else 
+                    class="text-2xl font-semibold text-gray-600"
+                  >
+                    {{ getInitials(userDetail.full_name || 'User') }}
+                  </div>
+                </div>
+
+                <!-- Loading Overlay -->
+                <div 
+                  v-if="isUploading || isRemoving"
+                  class="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center"
+                >
+                  <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex gap-2">
+                <Button
+                  @click="triggerUpload"
+                  :disabled="isUploading || isRemoving"
+                  size="sm"
+                >
+                  <div v-if="isUploading" class="flex items-center space-x-2">
+                    <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                    <span>Mengupload...</span>
+                  </div>
+                  <span v-else>
+                    {{ currentAvatar ? 'Ganti Avatar' : 'Upload Avatar' }}
+                  </span>
+                </Button>
+
+                <Button
+                  v-if="currentAvatar"
+                  @click="handleRemoveAvatar"
+                  :disabled="isUploading || isRemoving"
+                  variant="outline"
+                  size="sm"
+                >
+                  <div v-if="isRemoving" class="flex items-center space-x-2">
+                    <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
+                    <span>Menghapus...</span>
+                  </div>
+                  <span v-else>Hapus</span>
+                </Button>
+              </div>
+
+              <!-- Hidden File Input -->
+              <input
+                ref="fileInput"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="handleAvatarUpload"
+              />
+
+              <!-- Upload Info -->
+              <p class="text-xs text-gray-500 text-center max-w-xs">
+                Upload gambar JPG, PNG, atau GIF. Maksimal 5MB.
+              </p>
             </div>
-            <CardTitle class="text-xl">{{ userDetail.full_name || 'Nama tidak tersedia' }}</CardTitle>
-            <CardDescription>{{ userDetail.username || 'Username tidak tersedia' }}</CardDescription>
             
             <!-- Status Badges -->
-            <div class="flex flex-wrap justify-center gap-2 mt-4">
+            <div class="flex flex-wrap justify-center gap-2 mt-6">
               <Badge 
                 :variant="userDetail.isActive ? 'default' : 'secondary'" 
                 :class="userDetail.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
@@ -296,244 +435,135 @@ useHead({
                 {{ userDetail.isActive ? 'Aktif' : 'Tidak Aktif' }}
               </Badge>
               
-              <Badge variant="outline" class="bg-blue-50 text-blue-700">
-                {{ userDetail.role || 'petani' }}
-              </Badge>
-              
-              <Badge v-if="userDetail.is_admin" variant="outline" class="bg-purple-50 text-purple-700">
-                Admin
-              </Badge>
-              
               <Badge v-if="userDetail.isArchived" variant="outline" class="bg-orange-50 text-orange-700">
                 Diarsipkan
+              </Badge>
+            </div>
+            
+            <!-- Role Badge -->
+            <div class="flex justify-center mt-3">
+              <Badge 
+                variant="outline" 
+                :class="{
+                  'bg-purple-50 text-purple-700 border-purple-200': userDetail.role === 'admin',
+                  'bg-blue-50 text-blue-700 border-blue-200': userDetail.role === 'user',
+                  'bg-emerald-50 text-emerald-700 border-emerald-200': userDetail.role === 'moderator',
+                  'bg-gray-50 text-gray-700 border-gray-200': !['admin', 'user', 'moderator'].includes(userDetail.role)
+                }"
+              >
+                {{ userDetail.role?.charAt(0).toUpperCase() + userDetail.role?.slice(1) || 'User' }}
               </Badge>
             </div>
           </CardHeader>
           
           <CardContent class="space-y-4">
-            <!-- Action Buttons -->
-            <div class="flex flex-col gap-2">
-              <Button variant="outline" class="w-full" disabled>
-                <Edit class="h-4 w-4 mr-2" />
-                Edit Profil
-              </Button>
+            <!-- Timestamps -->
+            <div class="text-sm space-y-2">
+              <div>
+                <label class="font-medium text-gray-500">Bergabung</label>
+                <p class="text-xs">{{ formatDate(userDetail.created_at) }}</p>
+              </div>
               
-              <Button 
-                v-if="!userDetail.isActive" 
-                @click="restoreUser" 
-                class="w-full bg-green-600 hover:bg-green-700"
-                :disabled="loading"
-              >
-                <UserCheck class="h-4 w-4 mr-2" />
-                {{ loading ? 'Memulihkan...' : 'Pulihkan Akun' }}
-              </Button>
-              
-              <AlertDialog v-model:open="deleteDialogOpen">
-                <AlertDialogTrigger as-child>
-                  <Button 
-                    v-if="userDetail.isActive" 
-                    variant="destructive" 
-                    class="w-full"
-                    :disabled="loading"
-                  >
-                    <Trash2 class="h-4 w-4 mr-2" />
-                    Hapus Petani
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Apakah Anda yakin ingin menghapus petani <strong>{{ userDetail.full_name }}</strong>? 
-                      Tindakan ini akan menonaktifkan akun petani (soft delete).
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Batal</AlertDialogCancel>
-                    <AlertDialogAction @click="deleteUser" class="bg-red-600 hover:bg-red-700">
-                      Hapus
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <div>
+                <label class="font-medium text-gray-500">Terakhir Diperbarui</label>
+                <p class="text-xs">{{ formatDate(userDetail.updated_at) }}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <!-- Information Cards -->
-      <div class="md:col-span-2 space-y-6">
-        <!-- Personal Information -->
+      <!-- Form -->
+      <div class="md:col-span-3">
         <Card>
           <CardHeader>
             <CardTitle class="flex items-center gap-2">
               <User class="h-5 w-5" />
-              Informasi Pribadi
+              Informasi User
             </CardTitle>
           </CardHeader>
-          <CardContent class="space-y-4">
+          <CardContent class="space-y-6">
+            <!-- Basic Information -->
             <div class="grid gap-4 md:grid-cols-2">
-              <div>
-                <label class="text-sm font-medium text-gray-500">Nama Lengkap</label>
-                <p class="mt-1">{{ userDetail.full_name || 'Tidak tersedia' }}</p>
+              <div class="space-y-2">
+                <Label for="full_name">Nama Lengkap</Label>
+                <Input
+                  id="full_name"
+                  v-model="formData.full_name"
+                  placeholder="Masukkan nama lengkap"
+                />
               </div>
               
-              <div>
-                <label class="text-sm font-medium text-gray-500">Username</label>
-                <p class="mt-1">{{ userDetail.username || 'Tidak tersedia' }}</p>
+              <div class="space-y-2">
+                <Label for="username">Username</Label>
+                <Input
+                  id="username"
+                  v-model="formData.username"
+                  placeholder="Masukkan username"
+                />
               </div>
               
-              <div>
-                <label class="text-sm font-medium text-gray-500">Email</label>
-                <p class="mt-1 flex items-center gap-2">
-                  <Mail class="h-4 w-4 text-gray-400" />
-                  {{ userDetail.email || 'Tidak tersedia' }}
-                </p>
+              <div class="space-y-2">
+                <Label for="email">Email</Label>
+                <Input
+                  id="email"
+                  v-model="formData.email"
+                  type="email"
+                  placeholder="Masukkan email"
+                />
               </div>
               
-              <div>
-                <label class="text-sm font-medium text-gray-500">No. Telepon</label>
-                <p class="mt-1 flex items-center gap-2">
-                  <Phone class="h-4 w-4 text-gray-400" />
-                  {{ userDetail.phone || 'Tidak tersedia' }}
-                </p>
+              <div class="space-y-2">
+                <Label for="phone">No. Telepon</Label>
+                <Input
+                  id="phone"
+                  v-model="formData.phone"
+                  placeholder="Masukkan no. telepon"
+                />
               </div>
               
-              <div>
-                <label class="text-sm font-medium text-gray-500">Tanggal Lahir</label>
-                <p class="mt-1 flex items-center gap-2">
-                  <Calendar class="h-4 w-4 text-gray-400" />
-                  {{ formatDateOnly(userDetail.birth_date) }}
-                </p>
+              <div class="space-y-2">
+                <Label for="birth_date">Tanggal Lahir</Label>
+                <Input
+                  id="birth_date"
+                  v-model="formData.birth_date"
+                  type="date"
+                />
               </div>
               
-              <div>
-                <label class="text-sm font-medium text-gray-500">Website</label>
-                <p class="mt-1 flex items-center gap-2">
-                  <Globe class="h-4 w-4 text-gray-400" />
-                  {{ userDetail.website || 'Tidak tersedia' }}
-                </p>
+              <div class="space-y-2">
+                <Label for="website">Website</Label>
+                <Input
+                  id="website"
+                  v-model="formData.website"
+                  placeholder="Masukkan website"
+                />
               </div>
             </div>
             
-            <Separator />
-            
-            <div>
-              <label class="text-sm font-medium text-gray-500">Alamat</label>
-              <p class="mt-1 flex items-start gap-2">
-                <MapPin class="h-4 w-4 text-gray-400 mt-0.5" />
-                {{ userDetail.address || 'Tidak tersedia' }}
-              </p>
+            <!-- Address -->
+            <div class="space-y-2">
+              <Label for="address">Alamat</Label>
+              <Textarea
+                id="address"
+                v-model="formData.address"
+                placeholder="Masukkan alamat lengkap"
+                rows="3"
+              />
             </div>
             
-            <div>
-              <label class="text-sm font-medium text-gray-500">Bio</label>
-              <p class="mt-1 flex items-start gap-2">
-                <FileText class="h-4 w-4 text-gray-400 mt-0.5" />
-                {{ userDetail.bio || 'Tidak tersedia' }}
-              </p>
+            <!-- Bio -->
+            <div class="space-y-2">
+              <Label for="bio">Bio</Label>
+              <Textarea
+                id="bio"
+                v-model="formData.bio"
+                placeholder="Masukkan bio"
+                rows="3"
+              />
             </div>
           </CardContent>
         </Card>
-
-        <!-- Account Status -->
-        <Card>
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-              <UserCheck class="h-5 w-5" />
-              Status Akun
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div class="grid gap-4 md:grid-cols-2">
-              <div>
-                <label class="text-sm font-medium text-gray-500">Status</label>
-                <div class="mt-1">
-                  <Badge 
-                    :variant="userDetail.isActive ? 'default' : 'secondary'" 
-                    :class="userDetail.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
-                  >
-                    {{ userDetail.isActive ? 'Aktif' : 'Tidak Aktif' }}
-                  </Badge>
-                </div>
-              </div>
-              
-              <div>
-                <label class="text-sm font-medium text-gray-500">Role</label>
-                <div class="mt-1">
-                  <Badge variant="outline" class="bg-blue-50 text-blue-700">
-                    {{ userDetail.role || 'petani' }}
-                  </Badge>
-                </div>
-              </div>
-              
-              <div>
-                <label class="text-sm font-medium text-gray-500">Admin</label>
-                <div class="mt-1">
-                  <Badge 
-                    :variant="userDetail.is_admin ? 'default' : 'secondary'"
-                    :class="userDetail.is_admin ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'"
-                  >
-                    {{ userDetail.is_admin ? 'Ya' : 'Tidak' }}
-                  </Badge>
-                </div>
-              </div>
-              
-              <div>
-                <label class="text-sm font-medium text-gray-500">Diarsipkan</label>
-                <div class="mt-1">
-                  <Badge 
-                    :variant="userDetail.isArchived ? 'default' : 'secondary'"
-                    :class="userDetail.isArchived ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'"
-                  >
-                    {{ userDetail.isArchived ? 'Ya' : 'Tidak' }}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <!-- Timestamps -->
-        <Card>
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-              <Calendar class="h-5 w-5" />
-              Riwayat Waktu
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div class="space-y-3">
-              <div>
-                <label class="text-sm font-medium text-gray-500">Bergabung</label>
-                <p class="mt-1 text-sm">{{ formatDate(userDetail.created_at) }}</p>
-              </div>
-              
-              <div>
-                <label class="text-sm font-medium text-gray-500">Terakhir Diperbarui</label>
-                <p class="mt-1 text-sm">{{ formatDate(userDetail.updated_at) }}</p>
-              </div>
-              
-              <div v-if="userDetail.deleted_at">
-                <label class="text-sm font-medium text-gray-500">Dihapus</label>
-                <p class="mt-1 text-sm text-red-600">{{ formatDate(userDetail.deleted_at) }}</p>
-              </div>
-              
-              <div v-if="userDetail.archived_at">
-                <label class="text-sm font-medium text-gray-500">Diarsipkan</label>
-                <p class="mt-1 text-sm text-orange-600">{{ formatDate(userDetail.archived_at) }}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <!-- Debug Information -->
-        <details class="bg-gray-50 p-4 rounded-lg">
-          <summary class="cursor-pointer font-medium text-gray-700 mb-2">
-            Debug: Raw User Data
-          </summary>
-          <pre class="text-xs bg-white p-3 rounded border overflow-auto max-h-60">{{ JSON.stringify(userDetail, null, 2) }}</pre>
-        </details>
       </div>
     </div>
   </div>

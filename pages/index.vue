@@ -128,34 +128,6 @@ async function handleLogout() {
           </Button>
         </CardContent>
       </Card>
-    </div>
-
-    <!-- User Data Display -->
-    <div class="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle class="flex items-center gap-2">
-            <User class="h-5 w-5" />
-            User Data
-          </CardTitle>
-          <CardDescription>
-            Current authenticated user information
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div class="space-y-4">
-            <div>
-              <h3 class="font-semibold text-sm text-muted-foreground mb-2">Auth User Data:</h3>
-              <pre class="bg-muted p-4 rounded-lg text-sm overflow-auto">{{ JSON.stringify(user, null, 2) }}</pre>
-            </div>
-            
-            <div>
-              <h3 class="font-semibold text-sm text-muted-foreground mb-2">Profile Data:</h3>
-              <pre class="bg-muted p-4 rounded-lg text-sm overflow-auto">{{ JSON.stringify(profile, null, 2) }}</pre>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    </div>    
   </div>
 </template>
