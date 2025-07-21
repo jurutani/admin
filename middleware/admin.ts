@@ -2,17 +2,17 @@
 export default defineNuxtRouteMiddleware(async (_to, _from) => {
   const { isAuthenticated, isAdmin, loading, logout } = useAuth()
 
-  // Tunggu hingga loading selesai
+  // Tunggu sampai auth selesai
   while (loading.value) {
     await new Promise(resolve => setTimeout(resolve, 50))
   }
 
-  // Jika belum login, arahkan ke halaman login
+  // Belum login
   if (!isAuthenticated.value) {
     return navigateTo('/login')
   }
 
-  // Jika bukan admin, logout lalu arahkan ke login
+  // Bukan admin
   if (!isAdmin.value) {
     await logout()
     return navigateTo('/login')
