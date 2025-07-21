@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// Middleware untuk admin
+// Middleware untuk admin - pastikan file middleware/admin.ts ada
 definePageMeta({
   middleware: 'admin',
 })
 
-import { Eye, MoreHorizontal, Users2, UserCheck, Trash2, MapPin, Phone, Calendar, Filter, RotateCcw, Plus, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Eye, MoreHorizontal, Users2, UserCheck, Trash2, Filter, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import {
   Table,
@@ -48,39 +47,16 @@ const router = useRouter()
 // Reactive states
 const refreshKey = ref(0)
 const deleteDialogOpen = ref(false)
-const addPetaniDialogOpen = ref(false)
 const userToDelete = ref(null)
-
-// Filter states
 const statusFilter = ref('all') // 'all', 'active', 'deleted'
-
-// Pagination states
 const currentPage = ref(1)
 const itemsPerPage = 20
-
-// Date range filtering
-const dateRange = ref<DateRange | null>(null)
-
-const filterStartDate = computed(() => {
-  if (!dateRange.value?.start) 
-    return null
-  return dateRange.value.start.toDate('UTC').toISOString()
-})
-
-const filterEndDate = computed(() => {
-  if (!dateRange.value?.end)
-    return null
-  return dateRange.value.end.toDate('UTC').toISOString()
-})
 
 // Function to get avatar URL from bucket
 function getAvatarUrl(avatarPath: string | null) {
   if (!avatarPath) return null
-  // Pastikan tidak ada slash di depan avatarPath
   const cleanPath = avatarPath.startsWith('/') ? avatarPath.slice(1) : avatarPath
-  const { data } = supabase.storage
-    .from('avatars')
-    .getPublicUrl(cleanPath)
+  const { data } = supabase.storage.from('avatars').getPublicUrl(cleanPath)
   return data.publicUrl
 }
 
@@ -100,30 +76,18 @@ async function fetchPetaniUsers() {
       query = query.not('deleted_at', 'is', null)
     }
 
-    if (filterStartDate.value) {
-      query = query.gte('created_at', filterStartDate.value)
-    }
-    if (filterEndDate.value) {
-      query = query.lte('created_at', filterEndDate.value)
-    }
-
     const { data, error } = await query
 
-    if (error) {
-      console.error('Error fetching petani users:', error)
-      throw error
-    }
+    if (error) throw error
 
     // Process data to include avatar URLs
-    const processedData = (data || []).map(user => ({
+    return (data || []).map(user => ({
       ...user,
       email: user.email || '',
       avatarUrl: getAvatarUrl(user.avatar_url),
       created_at: user.created_at,
-      isActive: !user.deleted_at // Status aktif berdasarkan deleted_at
+      isActive: !user.deleted_at
     }))
-
-    return processedData
   } catch (error) {
     console.error('Error in fetchPetaniUsers:', error)
     throw error
@@ -131,47 +95,29 @@ async function fetchPetaniUsers() {
 }
 
 // Fetch petani data
-const { data: petaniUsers, pending: petaniPending, error: petaniError, refresh: refreshPetani } = await useAsyncData(
+const { data: petaniUsers, pending: petaniPending, error: petaniError } = await useAsyncData(
   `petani-users-${refreshKey.value}`,
   fetchPetaniUsers,
   {
-    watch: [filterStartDate, filterEndDate, refreshKey, statusFilter],
-  },
+    watch: [refreshKey, statusFilter],
+  }
 )
 
 // Computed values for stats
 const allPetaniUsers = computed(() => petaniUsers.value || [])
-
-const totalPetaniCount = computed(() => {
-  return allPetaniUsers.value.filter(user => user.isActive).length
-})
-
-const totalDeletedCount = computed(() => {
-  return allPetaniUsers.value.filter(user => !user.isActive).length
-})
-
-const totalAllCount = computed(() => {
-  return allPetaniUsers.value.length
-})
+const totalPetaniCount = computed(() => allPetaniUsers.value.filter(user => user.isActive).length)
+const totalDeletedCount = computed(() => allPetaniUsers.value.filter(user => !user.isActive).length)
+const totalAllCount = computed(() => allPetaniUsers.value.length)
 
 // Pagination computed values
-const totalPages = computed(() => {
-  return Math.ceil(allPetaniUsers.value.length / itemsPerPage)
-})
-
+const totalPages = computed(() => Math.ceil(allPetaniUsers.value.length / itemsPerPage))
 const paginatedPetaniUsers = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
   const end = start + itemsPerPage
   return allPetaniUsers.value.slice(start, end)
 })
-
-const showingFrom = computed(() => {
-  return (currentPage.value - 1) * itemsPerPage + 1
-})
-
-const showingTo = computed(() => {
-  return Math.min(currentPage.value * itemsPerPage, allPetaniUsers.value.length)
-})
+const showingFrom = computed(() => (currentPage.value - 1) * itemsPerPage + 1)
+const showingTo = computed(() => Math.min(currentPage.value * itemsPerPage, allPetaniUsers.value.length))
 
 // Functions
 function refreshAllData() {
@@ -181,12 +127,6 @@ function refreshAllData() {
 
 function resetFilters() {
   statusFilter.value = 'all'
-  dateRange.value = null
-  currentPage.value = 1
-}
-
-function setStatusFilter(status: string) {
-  statusFilter.value = status
   currentPage.value = 1
 }
 
@@ -229,10 +169,6 @@ function viewUserDetail(userId: string) {
   router.push(`/users/${userId}`)
 }
 
-function openAddPetaniDialog() {
-  addPetaniDialogOpen.value = true
-}
-
 function confirmDelete(user: any) {
   userToDelete.value = user
   deleteDialogOpen.value = true
@@ -240,27 +176,19 @@ function confirmDelete(user: any) {
 
 async function deleteUser() {
   if (!userToDelete.value) return
-
   try {
-    const userId = userToDelete.value.id
-
-    // Soft delete: update deleted_at di profiles
-    const { error: profileError } = await supabase
+    const { error } = await supabase
       .from('profiles')
       .update({ deleted_at: new Date().toISOString() })
-      .eq('id', userId)
+      .eq('id', userToDelete.value.id)
 
-    if (profileError) {
-      throw profileError
-    }
+    if (error) throw error
 
     toast({
       title: 'Berhasil',
       description: 'Petani berhasil dihapus dari sistem (soft delete)',
     })
-
     refreshAllData()
-
   } catch (error) {
     console.error('Error soft deleting user:', error)
     toast({
@@ -281,17 +209,13 @@ async function restoreUser(userId: string) {
       .update({ deleted_at: null })
       .eq('id', userId)
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
     toast({
       title: 'Berhasil',
       description: 'Petani berhasil dipulihkan',
     })
-
     refreshAllData()
-
   } catch (error) {
     console.error('Error restoring user:', error)
     toast({
@@ -300,11 +224,6 @@ async function restoreUser(userId: string) {
       variant: 'destructive',
     })
   }
-}
-
-function onPetaniAdded() {
-  addPetaniDialogOpen.value = false
-  refreshAllData()
 }
 
 // Watch for filter changes to reset pagination
@@ -328,7 +247,6 @@ watch([statusFilter], () => {
           <Users2 class="h-6 w-6 md:h-8 md:w-8 text-gray-600" />
         </div>
       </div>
-
       <!-- Card Petani Aktif -->
       <div class="bg-white p-4 md:p-6 rounded-lg border">
         <div class="flex items-center justify-between">
@@ -340,7 +258,6 @@ watch([statusFilter], () => {
           <UserCheck class="h-6 w-6 md:h-8 md:w-8 text-green-600" />
         </div>
       </div>
-      
       <!-- Card Petani Dihapus -->
       <div class="bg-white p-4 md:p-6 rounded-lg border">
         <div class="flex items-center justify-between">
@@ -352,7 +269,6 @@ watch([statusFilter], () => {
           <Trash2 class="h-6 w-6 md:h-8 md:w-8 text-red-600" />
         </div>
       </div>
-
       <!-- Card Data Ditampilkan -->
       <div class="bg-white p-4 md:p-6 rounded-lg border">
         <div class="flex items-center justify-between">
@@ -371,7 +287,6 @@ watch([statusFilter], () => {
       <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div class="flex items-center gap-4">
           <h1 class="text-2xl font-bold">Daftar Petani</h1>
-          
           <!-- Filter Status Badge -->
           <div class="flex items-center gap-2">
             <Badge 
@@ -383,7 +298,6 @@ watch([statusFilter], () => {
               {{ statusFilter === 'all' ? 'Semua Data' : 
                  statusFilter === 'active' ? 'Hanya Aktif' : 'Hanya Dihapus' }}
             </Badge>
-            
             <!-- Reset Filter Button -->
             <Button 
               v-if="statusFilter !== 'all'" 
@@ -397,7 +311,6 @@ watch([statusFilter], () => {
             </Button>
           </div>
         </div>
-
       </div>
 
       <!-- Filters Row -->
@@ -414,7 +327,6 @@ watch([statusFilter], () => {
               <SelectItem value="deleted">Hanya Dihapus</SelectItem>
             </SelectContent>
           </Select>
-                  
           <div class="flex items-center gap-2">
             <Button @click="refreshAllData" variant="outline">
               Refresh Data
@@ -466,7 +378,6 @@ watch([statusFilter], () => {
                 </div>
               </TableCell>
             </TableRow>
-            
             <TableRow v-for="petani in paginatedPetaniUsers" :key="petani.id" class="hover:bg-gray-50">
               <TableCell>
                 <div class="flex items-center gap-3">
@@ -482,19 +393,16 @@ watch([statusFilter], () => {
                   </div>
                 </div>
               </TableCell>
-              
               <TableCell>
                 <div class="text-sm">
                   {{ petani.location || petani.address || 'Belum ditentukan' }}
                 </div>
               </TableCell>
-              
               <TableCell>
                 <div class="text-sm">
                   {{ petani.phone_number || petani.phone || 'Belum diisi' }}
                 </div>
               </TableCell>
-              
               <TableCell>
                 <Badge 
                   :variant="petani.isActive ? 'default' : 'secondary'" 
@@ -503,17 +411,14 @@ watch([statusFilter], () => {
                   {{ petani.isActive ? 'Aktif' : 'Tidak Aktif' }}
                 </Badge>
               </TableCell>
-              
               <TableCell>
                 <div class="text-sm">{{ formatDate(petani.created_at) }}</div>
               </TableCell>
-              
               <TableCell>
                 <div class="text-sm">
                   {{ petani.deleted_at ? formatDate(petani.deleted_at) : '-' }}
                 </div>
               </TableCell>
-              
               <TableCell class="text-right">
                 <DropdownMenu>
                   <DropdownMenuTrigger as-child>
@@ -529,7 +434,6 @@ watch([statusFilter], () => {
                       <Eye class="h-4 w-4" />
                       Lihat Detail
                     </DropdownMenuItem>
-                    
                     <DropdownMenuItem 
                       v-if="!petani.isActive"
                       class="flex cursor-pointer items-center gap-2 text-green-600 focus:text-green-600"
@@ -538,7 +442,6 @@ watch([statusFilter], () => {
                       <UserCheck class="h-4 w-4" />
                       Pulihkan
                     </DropdownMenuItem>
-                    
                     <DropdownMenuItem 
                       v-if="petani.isActive"
                       class="flex cursor-pointer items-center gap-2 text-red-600 focus:text-red-600"
@@ -560,7 +463,6 @@ watch([statusFilter], () => {
         <div class="text-sm text-gray-500">
           Menampilkan {{ showingFrom }} sampai {{ showingTo }} dari {{ totalAllCount }} data
         </div>
-        
         <div class="flex items-center gap-2">
           <Button 
             variant="outline" 
@@ -571,7 +473,6 @@ watch([statusFilter], () => {
             <ChevronLeft class="h-4 w-4" />
             Sebelumnya
           </Button>
-          
           <div class="flex items-center gap-1">
             <template v-for="page in Math.min(totalPages, 5)" :key="page">
               <Button
@@ -584,12 +485,10 @@ watch([statusFilter], () => {
                 {{ page }}
               </Button>
             </template>
-            
             <span v-if="totalPages > 5" class="text-sm text-gray-500 px-2">
               ... {{ totalPages }}
             </span>
           </div>
-          
           <Button 
             variant="outline" 
             size="sm" 
