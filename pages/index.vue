@@ -91,7 +91,7 @@ async function handleLogout() {
     <!-- Header with user info -->
     <div class="mb-8 flex justify-between items-start">
       <div>
-        <h1 class="text-3xl font-bold">Dashboard Jurutani</h1>
+        <h1 class="text-3xl font-bold">Dashboard Juru tani</h1>
         <p class="text-muted-foreground">Platform pembelajaran dan trading</p>
       </div>
       <!-- User info and logout -->

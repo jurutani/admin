@@ -38,7 +38,7 @@ const emit = defineEmits(['openChat', 'deleteConversation'])
 const showDeleteConfirm = ref(false)
 const isHovered = ref(false)
 
-// JuruTani specific role handling
+// Juru Tani specific role handling
 const getRoleBadgeVariant = (role: string) => {
   switch (role) {
     case 'pakar':
@@ -58,10 +58,10 @@ const getRoleDisplayName = (role: string) => {
   switch (role) {
     case 'pakar':
     case 'expert':
-      return 'Ahli JuruTani'
+      return 'Ahli Juru Tani'
     case 'penyuluh':
     case 'instructor':
-      return 'Penyuluh JuruTani'
+      return 'Penyuluh Juru Tani'
     case 'admin':
       return 'Admin'
     default:
@@ -109,7 +109,7 @@ const cancelDelete = () => {
     @mouseenter="isHovered = true"
     @mouseleave="isHovered = false"
   >
-    <!-- Avatar with JuruTani styling -->
+    <!-- Avatar with Juru Tani styling -->
     <div class="relative">
       <Avatar 
         class="w-12 h-12 ring-3 ring-green-100 dark:ring-green-800 
@@ -143,7 +143,7 @@ const cancelDelete = () => {
             {{ partner?.full_name }}
           </h3>
           
-          <!-- Role Badge for JuruTani experts, now below the name -->
+          <!-- Role Badge for Juru Tani experts, now below the name -->
           <Badge
             variant="secondary"
             :class="getRoleBadgeVariant(partner?.role || '')"

@@ -398,7 +398,7 @@ onUnmounted(() => {
           </Button>
           <div class="flex items-center gap-2 text-foreground">
             <Newspaper class="w-5 h-5" />
-            <span class="font-semibold">JuruTani Room Chat</span>
+            <span class="font-semibold">Juru Tani Room Chat</span>
           </div>
         </div>
       </div>
