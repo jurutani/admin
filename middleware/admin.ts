@@ -1,13 +1,15 @@
-// middleware/admin.ts
-export default defineNuxtRouteMiddleware((to) => {
+export default defineNuxtRouteMiddleware(async (_to) => {
   const { isAuthenticated, isAdmin, loading } = useAuth()
-  // Wait for auth to initialize
-  if (loading.value) {
-    return
+
+  // Tunggu sampai auth selesai (opsional, tergantung useAuth-mu)
+  while (loading.value) {
+    await new Promise(resolve => setTimeout(resolve, 50))
   }
+
   if (!isAuthenticated.value) {
     return navigateTo('/login')
   }
+
   if (!isAdmin.value) {
     throw createError({
       statusCode: 403,

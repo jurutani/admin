@@ -1,5 +1,5 @@
 // middleware/guest.ts
-export default defineNuxtRouteMiddleware((to) => {
+export default defineNuxtRouteMiddleware((_to) => {
   const { isAuthenticated, loading } = useAuth()
   // Wait for auth to initialize
   if (loading.value) {

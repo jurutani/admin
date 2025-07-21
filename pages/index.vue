@@ -15,7 +15,7 @@ import { useAuth } from '@/composables/useAuth'
 
 // Middleware untuk admin
 definePageMeta({
-  middleware: 'admin'
+  middleware: 'admin',
 })
 
 // Auth composable
@@ -94,7 +94,6 @@ async function handleLogout() {
         <h1 class="text-3xl font-bold">Dashboard Jurutani</h1>
         <p class="text-muted-foreground">Platform pembelajaran dan trading</p>
       </div>
-      
       <!-- User info and logout -->
       <div class="flex items-center gap-4">
         <div class="text-right">
@@ -128,6 +127,6 @@ async function handleLogout() {
           </Button>
         </CardContent>
       </Card>
-    </div>    
+    </div>
   </div>
 </template>
