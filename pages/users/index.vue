@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// Middleware untuk admin
+definePageMeta({
+  middleware: 'admin',
+})
+
 import { Eye, MoreHorizontal, Users2, UserCheck, Trash2, MapPin, Phone, Calendar, Filter, RotateCcw, Plus, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
