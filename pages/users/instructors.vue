@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Eye, MoreHorizontal, Users2, UserCheck, Trash2, MapPin, Phone, Calendar, Plus, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Eye, Edit, MoreHorizontal, Users2, UserCheck, Trash2, MapPin, Phone, Calendar, Plus, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -46,12 +46,14 @@ const router = useRouter()
 const refreshKey = ref(0)
 const deleteDialogOpen = ref(false)
 const addInstructorDialogOpen = ref(false)
+const editInstructorDialogOpen = ref(false)
 const instructorToDelete = ref(null)
+const instructorToEdit = ref(null) // Pastikan nama variabel konsisten
 
 // Filter states
-const statusFilter = ref('all') // 'all', 'active', 'deleted'
-const provinceFilter = ref('all') // 'all', atau nama provinsi
-const districtFilter = ref('all') // 'all', atau nama district/kabupaten
+const statusFilter = ref('all')
+const provinceFilter = ref('all')
+const districtFilter = ref('all')
 
 // Pagination states
 const currentPage = ref(1)
@@ -75,7 +77,6 @@ const filterEndDate = computed(() => {
 // Function to get avatar URL from bucket
 function getAvatarUrl(avatarPath: string | null) {
   if (!avatarPath) return null
-  // avatarPath expected: "id/filename.jpg"
   const { data } = supabase.storage
     .from('avatars')
     .getPublicUrl(avatarPath)
@@ -144,8 +145,8 @@ async function fetchInstructors() {
       profile_created_at: instructor.profiles.created_at,
       profile_deleted_at: instructor.profiles.deleted_at,
       avatarUrl: getAvatarUrl(instructor.profiles.avatar_url),
-      isActive: !instructor.deleted_at, // Status aktif instructor berdasarkan deleted_at instructor
-      isProfileActive: !instructor.profiles.deleted_at, // Status aktif profile
+      isActive: !instructor.deleted_at,
+      isProfileActive: !instructor.profiles.deleted_at,
     }))
 
     return processedData
@@ -259,7 +260,15 @@ function viewInstructorDetail(instructorId: string) {
 }
 
 function openAddInstructorDialog() {
+  instructorToEdit.value = null // Reset untuk memastikan mode create
   addInstructorDialogOpen.value = true
+}
+
+// Perbaikan function untuk edit
+function openEditInstructorDialog(instructor: any) {
+  console.log('Opening edit dialog with instructor:', instructor) // Debug log
+  instructorToEdit.value = instructor
+  editInstructorDialogOpen.value = true
 }
 
 function confirmDelete(instructor: any) {
@@ -333,6 +342,8 @@ async function restoreInstructor(instructorId: string) {
 
 function onInstructorAdded() {
   addInstructorDialogOpen.value = false
+  editInstructorDialogOpen.value = false
+  instructorToEdit.value = null
   refreshAllData()
 }
 
@@ -556,6 +567,14 @@ watch([statusFilter, provinceFilter, districtFilter], () => {
                       Lihat Detail
                     </DropdownMenuItem>
                     <DropdownMenuItem
+                      v-if="instructor.isActive"
+                      class="flex cursor-pointer items-center gap-2 text-blue-600 focus:text-blue-600"
+                      @click="openEditInstructorDialog(instructor)"
+                    >
+                      <Edit class="h-4 w-4" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       v-if="!instructor.isActive"
                       class="flex cursor-pointer items-center gap-2 text-green-600 focus:text-green-600"
                       @click="restoreInstructor(instructor.id)"
@@ -630,6 +649,13 @@ watch([statusFilter, provinceFilter, districtFilter], () => {
     <!-- Add Instructor Dialog -->
     <Dialog 
       v-model:open="addInstructorDialogOpen"
+      @instructor-added="onInstructorAdded"
+    />
+    
+    <!-- Edit Instructor Dialog -->
+    <Dialog 
+      v-model:open="editInstructorDialogOpen"
+      :instructor-item="instructorToEdit"
       @instructor-added="onInstructorAdded"
     />
 

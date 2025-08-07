@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
-import { Upload, FileText, Image, X } from 'lucide-vue-next'
+import { Upload, FileText, Image, X, Loader2, Trash2 } from 'lucide-vue-next'
 
 const supabase = useSupabaseClient()
 const { toast } = useToast()
@@ -36,6 +36,12 @@ const form = ref({
   course_files: [] as File[]
 })
 
+// Add refs for existing files display
+const existingImageUrl = ref<string | null>(null)
+const existingFiles = ref<string[]>([])
+const filesToDelete = ref<string[]>([])
+const imageToDelete = ref<boolean>(false)
+
 const isEdit = computed(() => !!props.courseItem)
 
 onMounted(async () => {
@@ -53,6 +59,12 @@ watch(() => props.courseItem, (newItem) => {
       image_file: null,
       course_files: []
     }
+    
+    // Set existing media
+    existingImageUrl.value = newItem.image_url || null
+    existingFiles.value = newItem.files ? JSON.parse(newItem.files) : []
+    filesToDelete.value = []
+    imageToDelete.value = false
   } else {
     resetForm()
   }
@@ -121,23 +133,37 @@ async function handleSubmit() {
   }
 
   loading.value = true
-  uploading.value = true
 
   try {
     let imageUrl = props.courseItem?.image_url || null
-    let filesUrls: string[] = []
+    let filesUrls: string[] = existingFiles.value || []
+
+    // Handle image deletion
+    if (imageToDelete.value) {
+      imageUrl = null
+    }
+
+    // Handle files deletion
+    if (filesToDelete.value.length > 0) {
+      filesUrls = filesUrls.filter(url => !filesToDelete.value.includes(url))
+    }
 
     // Generate course ID for new courses or use existing ID
     const courseId = props.courseItem?.id || crypto.randomUUID()
 
     // Upload image if provided
     if (form.value.image_file) {
+      uploading.value = true
       imageUrl = await uploadFile(form.value.image_file, 'courses', `image/${courseId}`)
+      uploading.value = false
     }
 
     // Upload course files if provided
     if (form.value.course_files.length > 0) {
-      filesUrls = await uploadMultipleFiles(form.value.course_files, courseId)
+      uploading.value = true
+      const newFilesUrls = await uploadMultipleFiles(form.value.course_files, courseId)
+      filesUrls = [...filesUrls, ...newFilesUrls]
+      uploading.value = false
     }
 
     // Prepare course data
@@ -148,7 +174,7 @@ async function handleSubmit() {
       link_drive: form.value.link_drive || null,
       link_youtube: form.value.link_youtube || null,
       image_url: imageUrl,
-      files: filesUrls.length > 0 ? JSON.stringify(filesUrls) : (props.courseItem?.files || null),
+      files: filesUrls.length > 0 ? JSON.stringify(filesUrls) : null,
       updated_at: new Date().toISOString()
     }
 
@@ -204,6 +230,10 @@ function resetForm() {
     image_file: null,
     course_files: []
   }
+  existingImageUrl.value = null
+  existingFiles.value = []
+  filesToDelete.value = []
+  imageToDelete.value = false
 }
 
 function onImageChange(event: Event) {
@@ -227,6 +257,29 @@ function removeImage() {
   // Reset the file input
   const imageInput = document.getElementById('image') as HTMLInputElement
   if (imageInput) imageInput.value = ''
+}
+
+function removeExistingImage() {
+  if (confirm('Apakah Anda yakin ingin menghapus gambar ini? Gambar akan dihapus saat course disimpan.')) {
+    imageToDelete.value = true
+    existingImageUrl.value = null
+  }
+}
+
+function removeExistingFile(fileUrl: string, fileName: string) {
+  if (confirm(`Apakah Anda yakin ingin menghapus file "${fileName}"? File akan dihapus saat course disimpan.`)) {
+    filesToDelete.value.push(fileUrl)
+    existingFiles.value = existingFiles.value.filter(url => url !== fileUrl)
+  }
+}
+
+function getFileNameFromUrl(url: string): string {
+  try {
+    const urlParts = url.split('/')
+    return urlParts[urlParts.length - 1] || 'Unknown file'
+  } catch {
+    return 'Unknown file'
+  }
 }
 
 function formatFileSize(bytes: number): string {
@@ -347,9 +400,36 @@ const isFormValid = computed(() => {
         <div class="space-y-4">
           <h3 class="text-lg font-medium">Media & Files</h3>
           
+          <!-- Existing Image Display -->
+          <div v-if="existingImageUrl && isEdit" class="space-y-2">
+            <Label>Gambar Course Saat Ini</Label>
+            <div class="p-3 border rounded-lg bg-blue-50">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center space-x-2">
+                  <Image class="h-4 w-4 text-blue-500" />
+                  <span class="text-sm font-medium text-blue-700">Gambar yang sudah ada</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  @click="removeExistingImage"
+                  class="text-red-500 hover:text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </Button>
+              </div>
+              <img 
+                :src="existingImageUrl" 
+                alt="Course image" 
+                class="w-32 h-24 object-cover rounded border"
+              />
+            </div>
+          </div>
+          
           <!-- Image Upload -->
           <div class="space-y-2">
-            <Label for="image">Gambar Course</Label>
+            <Label for="image">{{ existingImageUrl && isEdit ? 'Upload Gambar Baru (Opsional)' : 'Gambar Course' }}</Label>
             <Input
               id="image"
               type="file"
@@ -357,7 +437,7 @@ const isFormValid = computed(() => {
               @change="onImageChange"
             />
             
-            <!-- Image Preview -->
+            <!-- New Image Preview -->
             <div v-if="form.image_file" class="mt-2 p-3 border rounded-lg bg-gray-50">
               <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-2">
@@ -381,9 +461,89 @@ const isFormValid = computed(() => {
             </p>
           </div>
 
+          <!-- Deleted Image Info -->
+          <div v-if="imageToDelete && isEdit" class="space-y-2">
+            <Label>Status Gambar</Label>
+            <div class="p-3 border rounded-lg bg-red-50 border-red-200">
+              <div class="flex items-center space-x-2">
+                <Trash2 class="h-4 w-4 text-red-500" />
+                <span class="text-sm font-medium text-red-700">
+                  Gambar akan dihapus saat course disimpan
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  @click="imageToDelete = false; existingImageUrl = courseItem?.image_url || null"
+                  class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 ml-auto"
+                >
+                  Batal Hapus
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Deleted Files Info -->
+          <div v-if="filesToDelete.length > 0 && isEdit" class="space-y-2">
+            <Label>File yang Akan Dihapus</Label>
+            <div class="space-y-2">
+              <div
+                v-for="(fileUrl, index) in filesToDelete"
+                :key="index"
+                class="p-3 border rounded-lg bg-red-50 border-red-200"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <Trash2 class="h-4 w-4 text-red-500" />
+                    <span class="text-sm font-medium text-red-700">
+                      {{ getFileNameFromUrl(fileUrl) }} - akan dihapus
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    @click="filesToDelete = filesToDelete.filter(url => url !== fileUrl); existingFiles.push(fileUrl)"
+                    class="text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                  >
+                    Batal Hapus
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-if="existingFiles.length > 0 && isEdit" class="space-y-2">
+            <Label>File Course Saat Ini</Label>
+            <div class="space-y-2">
+              <div
+                v-for="(fileUrl, index) in existingFiles"
+                :key="index"
+                class="p-3 border rounded-lg bg-blue-50"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <FileText class="h-4 w-4 text-blue-500" />
+                    <span class="text-sm font-medium text-blue-700">
+                      {{ getFileNameFromUrl(fileUrl) }}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    @click="removeExistingFile(fileUrl, getFileNameFromUrl(fileUrl))"
+                    class="text-red-500 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 class="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Files Upload -->
           <div class="space-y-2">
-            <Label for="files">File Course</Label>
+            <Label for="files">{{ existingFiles.length > 0 && isEdit ? 'Upload File Tambahan (Opsional)' : 'File Course' }}</Label>
             <Input
               id="files"
               type="file"
@@ -391,7 +551,7 @@ const isFormValid = computed(() => {
               @change="onFilesChange"
             />
             
-            <!-- Files Preview -->
+            <!-- New Files Preview -->
             <div v-if="form.course_files.length > 0" class="mt-2 space-y-2">
               <div
                 v-for="(file, index) in form.course_files"
@@ -422,17 +582,6 @@ const isFormValid = computed(() => {
           </div>
         </div>
 
-        <!-- Existing Files Info (for edit mode) -->
-        <div v-if="isEdit && courseItem?.files" class="space-y-2">
-          <Label>File yang sudah ada</Label>
-          <div class="p-3 border rounded-lg bg-blue-50">
-            <p class="text-sm text-blue-700">
-              Course ini sudah memiliki {{ JSON.parse(courseItem.files || '[]').length }} file yang terupload.
-              Upload file baru akan menambahkan ke file yang sudah ada.
-            </p>
-          </div>
-        </div>
-
         <!-- Action Buttons -->
         <div class="flex justify-end space-x-2 pt-6 border-t">
           <Button
@@ -447,7 +596,8 @@ const isFormValid = computed(() => {
             type="submit" 
             :disabled="loading || !isFormValid"
           >
-            <Upload v-if="uploading" class="h-4 w-4 mr-2 animate-spin" />
+            <Loader2 v-if="loading" class="h-4 w-4 mr-2 animate-spin" />
+            <Upload v-else-if="uploading" class="h-4 w-4 mr-2" />
             <span v-if="loading">
               {{ uploading ? 'Mengupload...' : 'Menyimpan...' }}
             </span>

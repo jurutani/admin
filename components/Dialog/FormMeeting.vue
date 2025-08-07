@@ -7,8 +7,16 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
-import { Calendar, Upload, X, ExternalLink, FileImage, Trash2, Image as ImageIcon } from 'lucide-vue-next'
+import { Calendar, Upload, X, ExternalLink, FileText, Trash2, Image as ImageIcon, Loader2 } from 'lucide-vue-next'
 import { useAuth } from '~/composables/useAuth'
+
+// Types
+interface AttachmentItem {
+  name: string
+  url: string
+  size?: number
+  type?: string
+}
 
 const supabase = useSupabaseClient()
 const { user } = useAuth()
@@ -24,6 +32,7 @@ const emit = defineEmits<{
   (e: 'success'): void
 }>()
 
+// Loading states
 const loading = ref(false)
 const uploadingImage = ref(false)
 const uploadingAttachments = ref(false)
@@ -37,12 +46,38 @@ const form = ref({
   image_url: ''
 })
 
+// File handling
 const imageFile = ref<File | null>(null)
 const attachmentFiles = ref<File[]>([])
-const existingAttachments = ref<string[]>([])
-const attachmentsToDelete = ref<string[]>([])
+const existingAttachments = ref<AttachmentItem[]>([])
+const attachmentsToDelete = ref<AttachmentItem[]>([])
 
 const isEdit = computed(() => !!props.meetingItem)
+
+// Accepted document types
+const ACCEPTED_DOCUMENT_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/csv',
+  'application/rtf',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/vnd.oasis.opendocument.presentation'
+]
+
+const DOCUMENT_EXTENSIONS = [
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', 
+  '.txt', '.csv', '.rtf', '.odt', '.ods', '.odp'
+]
+
+// Maximum file size (10MB)
+const MAX_FILE_SIZE = 10 * 1024 * 1024
 
 // Watch for changes in meetingItem
 watch(() => props.meetingItem, async (newItem) => {
@@ -81,6 +116,48 @@ const isValidMeetingUrl = computed(() => {
   }
 })
 
+// File validation functions
+function isValidDocumentType(file: File): boolean {
+  // Check by MIME type
+  if (ACCEPTED_DOCUMENT_TYPES.includes(file.type)) {
+    return true
+  }
+  
+  // Fallback: check by file extension
+  const fileName = file.name.toLowerCase()
+  return DOCUMENT_EXTENSIONS.some(ext => fileName.endsWith(ext))
+}
+
+function isValidFileSize(file: File): boolean {
+  return file.size <= MAX_FILE_SIZE
+}
+
+function getFileIcon(fileName: string): string {
+  const ext = fileName.toLowerCase().split('.').pop()
+  const iconMap: Record<string, string> = {
+    'pdf': '📄',
+    'doc': '📝',
+    'docx': '📝',
+    'xls': '📊',
+    'xlsx': '📊',
+    'ppt': '📋',
+    'pptx': '📋',
+    'txt': '📃',
+    'csv': '📊',
+    'rtf': '📝'
+  }
+  return iconMap[ext || ''] || '📄'
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// Load existing attachments from JSONB
 async function loadExistingAttachments(meetingId: string) {
   try {
     const { data: meeting, error } = await supabase
@@ -91,23 +168,57 @@ async function loadExistingAttachments(meetingId: string) {
 
     if (error) throw error
 
-    // attachments is now JSONB array
-    existingAttachments.value = meeting?.attachments || []
+    // Parse JSONB attachments array
+    const attachments = meeting?.attachments || []
+    existingAttachments.value = attachments.map((attachment: any) => {
+      // Handle both old string format and new object format
+      if (typeof attachment === 'string') {
+        return {
+          name: attachment,
+          url: getAttachmentUrlFromName(meetingId, attachment),
+          type: 'document'
+        }
+      }
+      return {
+        name: attachment.name || attachment.fileName || 'unknown',
+        url: attachment.url || getAttachmentUrlFromName(meetingId, attachment.name),
+        size: attachment.size,
+        type: attachment.type || 'document'
+      }
+    })
   } catch (error) {
     console.error('Error loading attachments:', error)
+    existingAttachments.value = []
   }
 }
 
+// Generate attachment URL from name
+function getAttachmentUrlFromName(meetingId: string, fileName: string): string {
+  const { data } = supabase.storage
+    .from('meetings')
+    .getPublicUrl(`${meetingId}/attachments/${fileName}`)
+  return data.publicUrl
+}
+
+// Image handling
 function handleImageSelect(event: Event) {
   const target = event.target as HTMLInputElement
   if (target.files && target.files[0]) {
     const file = target.files[0]
     if (file.type.startsWith('image/')) {
-      imageFile.value = file
+      if (isValidFileSize(file)) {
+        imageFile.value = file
+      } else {
+        toast({
+          title: "Error",
+          description: `Ukuran file terlalu besar. Maksimal ${formatFileSize(MAX_FILE_SIZE)}`,
+          variant: "destructive"
+        })
+      }
     } else {
       toast({
         title: "Error",
-        description: "Hanya file gambar yang diizinkan",
+        description: "Hanya file gambar yang diizinkan untuk gambar utama",
         variant: "destructive"
       })
     }
@@ -115,20 +226,56 @@ function handleImageSelect(event: Event) {
   }
 }
 
+// Document attachment handling
 function handleAttachmentSelect(event: Event) {
   const target = event.target as HTMLInputElement
   if (target.files) {
-    const newFiles = Array.from(target.files).filter(file => file.type.startsWith('image/'))
+    const newFiles = Array.from(target.files)
+    const validFiles: File[] = []
+    const errors: string[] = []
     
-    if (newFiles.length !== target.files.length) {
+    newFiles.forEach(file => {
+      // Check file type
+      if (!isValidDocumentType(file)) {
+        errors.push(`${file.name}: Format file tidak didukung`)
+        return
+      }
+      
+      // Check file size
+      if (!isValidFileSize(file)) {
+        errors.push(`${file.name}: Ukuran file terlalu besar (maksimal ${formatFileSize(MAX_FILE_SIZE)})`)
+        return
+      }
+      
+      // Check for duplicates
+      const isDuplicate = attachmentFiles.value.some(existingFile => 
+        existingFile.name === file.name && existingFile.size === file.size
+      )
+      
+      if (isDuplicate) {
+        errors.push(`${file.name}: File sudah dipilih sebelumnya`)
+        return
+      }
+      
+      validFiles.push(file)
+    })
+    
+    if (errors.length > 0) {
       toast({
         title: "Peringatan",
-        description: "Hanya file gambar yang diizinkan",
+        description: errors.join('\n'),
         variant: "destructive"
       })
     }
     
-    attachmentFiles.value = [...attachmentFiles.value, ...newFiles]
+    if (validFiles.length > 0) {
+      attachmentFiles.value = [...attachmentFiles.value, ...validFiles]
+      toast({
+        title: "Berhasil",
+        description: `${validFiles.length} file berhasil ditambahkan`
+      })
+    }
+    
     target.value = ''
   }
 }
@@ -142,30 +289,17 @@ function removeAttachment(index: number) {
   attachmentFiles.value.splice(index, 1)
 }
 
-function removeExistingAttachment(attachment: any) {
+function removeExistingAttachment(attachment: AttachmentItem) {
   attachmentsToDelete.value.push(attachment)
-  existingAttachments.value = existingAttachments.value.filter(a => {
-    if (typeof a === 'string' && typeof attachment === 'string') {
-      return a !== attachment
-    } else if (typeof a === 'object' && typeof attachment === 'object') {
-      return a.name !== attachment.name
-    }
-    return true
-  })
+  existingAttachments.value = existingAttachments.value.filter(a => a.name !== attachment.name)
 }
 
-function restoreExistingAttachment(attachment: any) {
-  attachmentsToDelete.value = attachmentsToDelete.value.filter(a => {
-    if (typeof a === 'string' && typeof attachment === 'string') {
-      return a !== attachment
-    } else if (typeof a === 'object' && typeof attachment === 'object') {
-      return a.name !== attachment.name
-    }
-    return true
-  })
+function restoreExistingAttachment(attachment: AttachmentItem) {
+  attachmentsToDelete.value = attachmentsToDelete.value.filter(a => a.name !== attachment.name)
   existingAttachments.value.push(attachment)
 }
 
+// Upload functions
 async function uploadImage(meetingId: string) {
   if (!imageFile.value) return null
 
@@ -194,16 +328,19 @@ async function uploadImage(meetingId: string) {
   }
 }
 
-async function uploadAttachments(meetingId: string) {
+async function uploadAttachments(meetingId: string): Promise<AttachmentItem[]> {
   if (attachmentFiles.value.length === 0) return []
 
   uploadingAttachments.value = true
-  const uploadedFiles: { name: string; url: string }[] = []
+  const uploadedFiles: AttachmentItem[] = []
 
   try {
     for (const file of attachmentFiles.value) {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const fileExt = file.name.split('.').pop() || 'pdf'
+      const timestamp = Date.now()
+      const randomId = Math.random().toString(36).substring(2, 8)
+      const originalName = file.name.replace(/\.[^/.]+$/, "")
+      const fileName = `${timestamp}-${randomId}-${originalName}.${fileExt}`
       const filePath = `${meetingId}/attachments/${fileName}`
 
       const { error } = await supabase.storage
@@ -218,7 +355,9 @@ async function uploadAttachments(meetingId: string) {
 
       uploadedFiles.push({
         name: fileName,
-        url: data.publicUrl
+        url: data.publicUrl,
+        size: file.size,
+        type: file.type
       })
     }
 
@@ -231,43 +370,29 @@ async function uploadAttachments(meetingId: string) {
   }
 }
 
-async function deleteAttachments(meetingId: string, attachmentsToDelete: any[]) {
+async function deleteAttachments(meetingId: string, attachmentsToDelete: AttachmentItem[]) {
   if (attachmentsToDelete.length === 0) return
 
   try {
-    // Delete from storage
-    const filePaths = attachmentsToDelete.map(attachment => {
-      if (typeof attachment === 'string') {
-        return `${meetingId}/attachments/${attachment}`
-      } else {
-        return `${meetingId}/attachments/${attachment.name}`
-      }
-    })
+    const filePaths = attachmentsToDelete.map(attachment => 
+      `${meetingId}/attachments/${attachment.name}`
+    )
     
     const { error } = await supabase.storage
       .from('meetings')
       .remove(filePaths)
 
-    if (error) throw error
+    if (error) {
+      console.warn('Some files might not exist in storage:', error)
+      // Don't throw error if files don't exist
+    }
   } catch (error) {
     console.error('Error deleting attachments:', error)
-    throw error
+    // Continue execution, don't block the update
   }
 }
 
-function getAttachmentUrl(attachment: any) {
-  if (typeof attachment === 'string') {
-    // Legacy format - try to construct URL
-    const { data } = supabase.storage
-      .from('meetings')
-      .getPublicUrl(`${props.meetingItem?.id}/attachments/${attachment}`)
-    return data.publicUrl
-  } else {
-    // New format with URL
-    return attachment.url
-  }
-}
-
+// Form submission
 async function handleSubmit() {
   if (!user.value) {
     toast({
@@ -278,7 +403,7 @@ async function handleSubmit() {
     return
   }
 
-  if (!form.value.title) {
+  if (!form.value.title.trim()) {
     toast({
       title: "Error",
       description: "Judul harus diisi",
@@ -287,7 +412,7 @@ async function handleSubmit() {
     return
   }
 
-  if (form.value.category === 'online' && !form.value.link) {
+  if (form.value.category === 'online' && !form.value.link.trim()) {
     toast({
       title: "Error",
       description: "Link harus diisi untuk meeting online",
@@ -311,70 +436,84 @@ async function handleSubmit() {
     let meetingId = props.meetingItem?.id
     let imageUrl = form.value.image_url
 
+    // Generate ID for new meeting if needed
+    if (!meetingId && (imageFile.value || attachmentFiles.value.length > 0)) {
+      meetingId = crypto.randomUUID()
+    }
+
     // Upload image if new one is selected
-    if (imageFile.value) {
-      if (!meetingId) {
-        // Create temporary ID for new meeting
-        meetingId = crypto.randomUUID()
-      }
+    if (imageFile.value && meetingId) {
       imageUrl = await uploadImage(meetingId)
     }
 
+    // Prepare meeting data
     const meetingData = {
-      title: form.value.title,
-      content: form.value.content || null,
-      link: form.value.link || null,
-      organization: form.value.organization || null,
+      title: form.value.title.trim(),
+      content: form.value.content.trim() || null,
+      link: form.value.link.trim() || null,
+      organization: form.value.organization.trim() || null,
       category: form.value.category,
       image_url: imageUrl || null,
       author_id: user.value.id,
       updated_at: new Date().toISOString()
     }
 
+    // Save meeting
     let result
-    if (isEdit.value) {
+    if (isEdit.value && props.meetingItem?.id) {
       result = await supabase
         .from('meetings')
         .update(meetingData)
-        .eq('id', meetingId)
+        .eq('id', props.meetingItem.id)
         .select()
+      meetingId = props.meetingItem.id
     } else {
+      const finalMeetingId = meetingId || crypto.randomUUID()
       result = await supabase
         .from('meetings')
         .insert({
           ...meetingData,
-          id: meetingId,
+          id: finalMeetingId,
           created_at: new Date().toISOString()
         })
         .select()
+      meetingId = finalMeetingId
     }
 
     if (result.error) throw result.error
 
-    // Handle attachments
-    if (meetingId) {
-      // Delete removed attachments
+    // Handle attachments if meeting was saved successfully
+    if (meetingId && result.data?.[0]) {
+      // Delete removed attachments from storage
       if (attachmentsToDelete.value.length > 0) {
         await deleteAttachments(meetingId, attachmentsToDelete.value)
       }
 
       // Upload new attachments
-      let uploadedFiles: string[] = []
+      let uploadedFiles: AttachmentItem[] = []
       if (attachmentFiles.value.length > 0) {
         uploadedFiles = await uploadAttachments(meetingId)
       }
 
-      // Update attachments field
-      const allAttachments = [
+      // Combine existing and new attachments for JSONB
+      const finalAttachments: AttachmentItem[] = [
         ...existingAttachments.value,
         ...uploadedFiles
       ]
 
-      if (allAttachments.length > 0 || attachmentsToDelete.value.length > 0) {
-        await supabase
+      // Update attachments in database (JSONB format)
+      if (finalAttachments.length > 0 || attachmentsToDelete.value.length > 0) {
+        const { error: attachmentError } = await supabase
           .from('meetings')
-          .update({ attachments: allAttachments })
+          .update({ 
+            attachments: finalAttachments.length > 0 ? finalAttachments : null 
+          })
           .eq('id', meetingId)
+
+        if (attachmentError) {
+          console.error('Error updating attachments:', attachmentError)
+          // Don't throw error, meeting is already saved
+        }
       }
     }
 
@@ -387,11 +526,11 @@ async function handleSubmit() {
     emit('update:open', false)
     resetForm()
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving meeting:', error)
     toast({
       title: "Error",
-      description: "Gagal menyimpan meeting",
+      description: error?.message || "Gagal menyimpan meeting",
       variant: "destructive"
     })
   } finally {
@@ -399,6 +538,7 @@ async function handleSubmit() {
   }
 }
 
+// Utility functions
 function resetForm() {
   form.value = {
     title: '',
@@ -428,15 +568,14 @@ function formatMeetingUrl() {
   }
 }
 
-function formatFileSize(bytes: number) {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
+// Computed properties
 const isUploading = computed(() => uploadingImage.value || uploadingAttachments.value)
+
+const isFormValid = computed(() => {
+  return form.value.title.trim() && 
+         (form.value.category === 'offline' || 
+          (form.value.category === 'online' && form.value.link.trim() && isValidMeetingUrl.value))
+})
 
 // Helper function to create object URL safely
 function createObjectURL(file: File): string {
@@ -445,6 +584,22 @@ function createObjectURL(file: File): string {
   }
   return ''
 }
+
+// Get display name for attachment
+function getAttachmentDisplayName(attachment: AttachmentItem): string {
+  // Extract original filename from stored name
+  const parts = attachment.name.split('-')
+  if (parts.length >= 3) {
+    // Remove timestamp and random ID parts, keep the original name
+    return parts.slice(2).join('-')
+  }
+  return attachment.name
+}
+
+// Get accepted file types string for input
+const acceptedFileTypes = computed(() => {
+  return DOCUMENT_EXTENSIONS.join(',')
+})
 </script>
 
 <template>
@@ -467,6 +622,7 @@ function createObjectURL(file: File): string {
             placeholder="Masukkan judul meeting"
             required
             :disabled="loading || isUploading"
+            class="w-full"
           />
         </div>
 
@@ -508,6 +664,7 @@ function createObjectURL(file: File): string {
               required
               :disabled="loading || isUploading"
               @blur="formatMeetingUrl"
+              class="flex-1"
             />
             <Button
               type="button"
@@ -539,12 +696,16 @@ function createObjectURL(file: File): string {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  :disabled="loading || isUploading"
+                  :disabled="loading || uploadingImage"
                   @click="removeImage"
                   class="absolute top-2 right-2 bg-red-500 text-white hover:bg-red-600"
                 >
                   <X class="h-4 w-4" />
                 </Button>
+              </div>
+              <div v-if="uploadingImage" class="flex items-center justify-center py-2">
+                <Loader2 class="h-4 w-4 animate-spin mr-2" />
+                <span class="text-sm text-gray-600">Mengupload gambar...</span>
               </div>
             </div>
             <div v-else class="text-center">
@@ -563,7 +724,7 @@ function createObjectURL(file: File): string {
                     @change="handleImageSelect"
                   />
                 </label>
-                <p class="mt-1 text-xs text-gray-500">PNG, JPG, GIF hingga 10MB</p>
+                <p class="mt-1 text-xs text-gray-500">PNG, JPG, GIF hingga {{ formatFileSize(MAX_FILE_SIZE) }}</p>
               </div>
             </div>
           </div>
@@ -578,116 +739,157 @@ function createObjectURL(file: File): string {
             placeholder="Deskripsi, agenda, atau konten meeting"
             rows="5"
             :disabled="loading || isUploading"
+            class="resize-none"
           />
         </div>
 
-        <!-- Attachments Upload -->
-        <div class="space-y-2">
-          <Label>Lampiran Tambahan</Label>
-          <div class="border-2 border-dashed border-gray-300 rounded-lg p-4">
-            <div class="text-center">
-              <FileImage class="mx-auto h-10 w-10 text-gray-400" />
-              <div class="mt-2">
-                <label for="attachments-upload" class="cursor-pointer">
-                  <span class="mt-2 block text-sm font-medium text-gray-900">
-                    Klik untuk upload lampiran
-                  </span>
-                  <input
-                    id="attachments-upload"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    class="sr-only"
-                    :disabled="loading || isUploading"
-                    @change="handleAttachmentSelect"
-                  />
-                </label>
-                <p class="mt-1 text-xs text-gray-500">PNG, JPG, GIF hingga 10MB</p>
+        <!-- Document Attachments Upload -->
+        <div class="space-y-4">
+          <div class="space-y-2">
+            <Label>Lampiran Dokumen</Label>
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-4">
+              <div class="text-center">
+                <FileText class="mx-auto h-10 w-10 text-gray-400" />
+                <div class="mt-2">
+                  <label for="attachments-upload" class="cursor-pointer">
+                    <span class="mt-2 block text-sm font-medium text-gray-900">
+                      Klik untuk upload dokumen
+                    </span>
+                    <input
+                      id="attachments-upload"
+                      type="file"
+                      :accept="acceptedFileTypes"
+                      multiple
+                      class="sr-only"
+                      :disabled="loading || isUploading"
+                      @change="handleAttachmentSelect"
+                    />
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500">
+                    PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, CSV, RTF, ODT, ODS, ODP
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500">
+                    Maksimal {{ formatFileSize(MAX_FILE_SIZE) }} per file
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div v-if="uploadingAttachments" class="flex items-center justify-center py-2">
+              <Loader2 class="h-4 w-4 animate-spin mr-2" />
+              <span class="text-sm text-gray-600">Mengupload dokumen...</span>
+            </div>
+          </div>
+
+          <!-- Existing Attachments -->
+          <div v-if="existingAttachments.length > 0" class="space-y-2">
+            <Label class="text-sm font-medium text-gray-700">Dokumen Saat Ini ({{ existingAttachments.length }})</Label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div
+                v-for="attachment in existingAttachments"
+                :key="attachment.name"
+                class="relative group flex items-center p-3 border rounded-lg bg-gray-50 hover:bg-gray-100"
+              >
+                <div class="flex-shrink-0 mr-3">
+                  <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <span class="text-lg">{{ getFileIcon(attachment.name) }}</span>
+                  </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium text-gray-900 truncate" :title="getAttachmentDisplayName(attachment)">
+                    {{ getAttachmentDisplayName(attachment) }}
+                  </div>
+                  <div v-if="attachment.size" class="text-xs text-gray-500">
+                    {{ formatFileSize(attachment.size) }}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  :disabled="loading || isUploading"
+                  @click="removeExistingAttachment(attachment)"
+                  class="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-red-500 hover:text-red-700 hover:bg-red-100"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </Button>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Existing Attachments -->
-        <div v-if="existingAttachments.length > 0" class="space-y-2">
-          <Label>Lampiran Saat Ini</Label>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            <div
-              v-for="attachment in existingAttachments"
-              :key="typeof attachment === 'string' ? attachment : attachment.name"
-              class="relative group"
-            >
-              <img
-                :src="getAttachmentUrl(attachment)"
-                :alt="typeof attachment === 'string' ? attachment : attachment.name"
-                class="w-full h-20 object-cover rounded border"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                :disabled="loading || isUploading"
-                @click="removeExistingAttachment(attachment)"
-                class="absolute top-1 right-1 bg-red-500 text-white hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+          <!-- New Attachments Preview -->
+          <div v-if="attachmentFiles.length > 0" class="space-y-2">
+            <Label class="text-sm font-medium text-green-700">Dokumen Baru ({{ attachmentFiles.length }})</Label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div
+                v-for="(file, index) in attachmentFiles"
+                :key="`new-${index}`"
+                class="relative group flex items-center p-3 border-2 border-green-200 rounded-lg bg-green-50 hover:bg-green-100"
               >
-                <Trash2 class="h-3 w-3" />
-              </Button>
+                <div class="flex-shrink-0 mr-3">
+                  <div class="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
+                    <span class="text-lg">{{ getFileIcon(file.name) }}</span>
+                  </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium text-green-800 truncate" :title="file.name">
+                    {{ file.name }}
+                  </div>
+                  <div class="text-xs text-green-600">
+                    {{ formatFileSize(file.size) }}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  :disabled="loading || isUploading"
+                  @click="removeAttachment(index)"
+                  class="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-red-500 hover:text-red-700 hover:bg-red-100"
+                >
+                  <X class="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- New Attachments Preview -->
-        <div v-if="attachmentFiles.length > 0" class="space-y-2">
-          <Label>Lampiran Baru</Label>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            <div
-              v-for="(file, index) in attachmentFiles"
-              :key="index"
-              class="relative group"
-            >
-              <img
-                :src="createObjectURL(file)"
-                :alt="file.name"
-                class="w-full h-20 object-cover rounded border"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                :disabled="loading || isUploading"
-                @click="removeAttachment(index)"
-                class="absolute top-1 right-1 bg-red-500 text-white hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+          <!-- Files to Delete -->
+          <div v-if="attachmentsToDelete.length > 0" class="space-y-2">
+            <Label class="text-sm font-medium text-red-600">Dokumen yang Akan Dihapus ({{ attachmentsToDelete.length }})</Label>
+            <div class="space-y-2">
+              <div
+                v-for="attachment in attachmentsToDelete"
+                :key="`delete-${attachment.name}`"
+                class="flex items-center justify-between p-3 border border-red-200 rounded-lg bg-red-50"
               >
-                <X class="h-3 w-3" />
-              </Button>
+                <div class="flex items-center space-x-3">
+                  <div class="w-8 h-8 bg-red-200 rounded flex items-center justify-center flex-shrink-0">
+                    <span class="text-sm">{{ getFileIcon(attachment.name) }}</span>
+                  </div>
+                  <div class="min-w-0">
+                    <span class="text-sm text-red-800 font-medium truncate block">
+                      {{ getAttachmentDisplayName(attachment) }}
+                    </span>
+                    <div v-if="attachment.size" class="text-xs text-red-600">
+                      {{ formatFileSize(attachment.size) }}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  :disabled="loading || isUploading"
+                  @click="restoreExistingAttachment(attachment)"
+                  class="text-green-600 hover:text-green-800 hover:bg-green-100 flex-shrink-0"
+                >
+                  Batalkan
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Files to Delete -->
-        <div v-if="attachmentsToDelete.length > 0" class="space-y-2">
-          <Label class="text-red-600">File yang Akan Dihapus</Label>
-          <div class="space-y-1">
-            <div
-              v-for="attachment in attachmentsToDelete"
-              :key="typeof attachment === 'string' ? attachment : attachment.name"
-              class="flex items-center justify-between p-2 border border-red-200 rounded bg-red-50"
-            >
-              <span class="text-sm text-red-800">
-                {{ typeof attachment === 'string' ? attachment : attachment.name }}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                :disabled="loading || isUploading"
-                @click="restoreExistingAttachment(attachment)"
-                class="text-green-600 hover:text-green-800"
-              >
-                Batalkan
-              </Button>
-            </div>
-          </div>
+          <!-- File Validation Info -->
         </div>
 
         <!-- Action Buttons -->
@@ -702,12 +904,17 @@ function createObjectURL(file: File): string {
           </Button>
           <Button 
             type="submit" 
-            :disabled="loading || isUploading || !isValidMeetingUrl || !user"
+            :disabled="loading || isUploading || !isFormValid"
+            class="min-w-[100px]"
           >
-            <span v-if="loading || isUploading">
-              <Upload class="h-4 w-4 mr-2 animate-spin" />
-              {{ isUploading ? 'Mengupload...' : 'Menyimpan...' }}
-            </span>
+            <div v-if="loading || isUploading" class="flex items-center">
+              <Loader2 class="h-4 w-4 mr-2 animate-spin" />
+              <span>
+                {{ uploadingImage ? 'Upload Gambar...' : 
+                   uploadingAttachments ? 'Upload Dokumen...' : 
+                   'Menyimpan...' }}
+              </span>
+            </div>
             <span v-else>
               {{ isEdit ? 'Update' : 'Simpan' }}
             </span>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -47,18 +47,54 @@ const filteredUsers = computed(() => {
   )
 })
 
+// Get selected user for edit mode display
+const selectedUserInfo = computed(() => {
+  if (isEdit.value && props.expertItem) {
+    return {
+      full_name: props.expertItem.full_name,
+      email: props.expertItem.email
+    }
+  }
+  return null
+})
+
+// Watch for changes in props.expertItem and form population
+watch(() => props.expertItem, (newExpertItem) => {
+  if (newExpertItem) {
+    populateForm(newExpertItem)
+  }
+}, { immediate: true, deep: true })
+
+// Watch for dialog open/close to handle form reset
+watch(() => props.open, (newOpen) => {
+  if (newOpen) {
+    // Dialog opened
+    if (props.expertItem) {
+      populateForm(props.expertItem)
+    } else {
+      resetForm()
+    }
+  }
+})
+
+// Function to populate form with expert data
+function populateForm(expertItem: any) {
+  console.log('Populating form with:', expertItem) // Debug log
+  form.value = {
+    user_id: expertItem.user_id || '',
+    category: expertItem.category || '',
+    note: expertItem.note || ''
+  }
+}
+
 // Load data saat component mount
 onMounted(async () => {
   await loadUsers()
   await loadCategories()
   
-  // Jika edit mode, populate form
+  // Jika expertItem sudah ada saat mount, populate form
   if (props.expertItem) {
-    form.value = {
-      user_id: props.expertItem.user_id || '',
-      category: props.expertItem.category || '',
-      note: props.expertItem.note || ''
-    }
+    populateForm(props.expertItem)
   }
 })
 
@@ -124,11 +160,10 @@ async function handleSubmit() {
     
     // 1. Tambahkan/update ke tabel experts
     if (isEdit.value && props.expertItem?.id) {
-      // Update existing expert
+      // Update existing expert - hanya category dan note
       const { error: expertError } = await supabase
         .from('experts')
         .update({
-          user_id: form.value.user_id,
           category: form.value.category,
           note: form.value.note,
           updated_at: now
@@ -149,24 +184,24 @@ async function handleSubmit() {
         })
 
       if (expertError) throw expertError
-    }
+      
+      // 2. Update role user menjadi 'pakar' hanya untuk expert baru
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ 
+          role: 'pakar',
+          updated_at: now
+        })
+        .eq('id', form.value.user_id)
 
-    // 2. Update role user menjadi 'pakar'
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ 
-        role: 'pakar',
-        updated_at: now
-      })
-      .eq('id', form.value.user_id)
-
-    if (profileError) {
-      console.warn('Warning: Failed to update user role:', profileError)
+      if (profileError) {
+        console.warn('Warning: Failed to update user role:', profileError)
+      }
     }
 
     toast({
       title: "Berhasil",
-      description: `Expert berhasil ${isEdit.value ? 'diperbarui' : 'ditambahkan'} dan role user diupdate menjadi pakar`
+      description: `Expert berhasil ${isEdit.value ? 'diperbarui' : 'ditambahkan'}${!isEdit.value ? ' dan role user diupdate menjadi pakar' : ''}`
     })
 
     emit('success')
@@ -184,6 +219,7 @@ async function handleSubmit() {
     loading.value = false
   }
 }
+
 function resetForm() {
   form.value = {
     user_id: '',
@@ -209,35 +245,45 @@ function handleDialogClose() {
       </DialogHeader>
 
       <form @submit.prevent="handleSubmit" class="space-y-4">
-        <!-- User Selection -->
+        <!-- User Selection - Berbeda untuk Add dan Edit -->
         <div class="space-y-2">
-          <Label>Pilih User *</Label>
+          <Label>{{ isEdit ? 'Expert' : 'Pilih User' }} *</Label>
           
-          <!-- Search Input -->
-          <div class="relative">
-            <Search class="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-            <Input
-              v-model="searchQuery"
-              placeholder="Cari user..."
-              class="pl-10"
-            />
+          <!-- Edit Mode: Show selected user info (read-only) -->
+          <div v-if="isEdit && selectedUserInfo" class="p-3 border rounded-md bg-gray-50">
+            <div class="font-medium">{{ selectedUserInfo.full_name || 'Nama tidak tersedia' }}</div>
+            <div class="text-sm text-gray-500">{{ selectedUserInfo.email }}</div>
           </div>
 
-          <!-- User Select -->
-          <Select v-model="form.user_id" :disabled="loading">
-            <SelectTrigger>
-              <SelectValue placeholder="Pilih user yang akan dijadikan expert" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                v-for="user in filteredUsers"
-                :key="user.id"
-                :value="user.id"
-              >
-                {{ user.full_name || user.email }} ({{ user.role }})
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <!-- Add Mode: User selection with search -->
+          <template v-else-if="!isEdit">
+            <!-- Search Input -->
+            <div class="relative">
+              <Search class="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                v-model="searchQuery"
+                placeholder="Cari user..."
+                class="pl-10"
+                :disabled="loading"
+              />
+            </div>
+
+            <!-- User Select -->
+            <Select v-model="form.user_id" :disabled="loading">
+              <SelectTrigger>
+                <SelectValue placeholder="Pilih user yang akan dijadikan expert" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="user in filteredUsers"
+                  :key="user.id"
+                  :value="user.id"
+                >
+                  {{ user.full_name || user.email }} ({{ user.role }})
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </template>
         </div>
 
         <!-- Category Selection -->
@@ -268,6 +314,21 @@ function handleDialogClose() {
             rows="3"
             :disabled="loading"
           />
+        </div>
+
+        <!-- Debug info (hapus setelah testing) -->
+        <div v-if="isEdit" class="p-2 bg-gray-100 text-xs rounded">
+          <strong>Debug:</strong> 
+          Category: {{ form.category }}, 
+          Note: {{ form.note }}, 
+          User ID: {{ form.user_id }}
+        </div>
+
+        <!-- Info untuk Edit Mode -->
+        <div v-if="isEdit" class="p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <p class="text-sm text-blue-700">
+            <strong>Info:</strong> Dalam mode edit, hanya kategori dan catatan yang dapat diubah.
+          </p>
         </div>
 
         <!-- Actions -->

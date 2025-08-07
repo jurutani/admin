@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
-import { Check, ChevronsUpDown, User, Loader2, MapPin } from 'lucide-vue-next'
+import { Loader2, Search } from 'lucide-vue-next'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 const supabase = useSupabaseClient()
 const { toast } = useToast()
@@ -21,19 +21,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
-  (e: 'success'): void
+  (e: 'instructor-added'): void
 }>()
 
 // State
 const districts = ref([])
 const users = ref([])
 const loading = ref(false)
-const userSearch = ref('')
-const userOpen = ref(false)
-const searchingUsers = ref(false)
-const districtOpen = ref(false)
-const districtSearch = ref('')
-const searchTimeout = ref(null)
+const searchQuery = ref('')
 
 const form = ref({
   user_id: '',
@@ -43,56 +38,77 @@ const form = ref({
 })
 
 // Computed
-const isEdit = computed(() => !!props.instructorItem)
-const selectedUser = computed(() => users.value.find(user => user.id === form.value.user_id))
-const selectedDistrict = computed(() => districts.value.find(district => district.name === form.value.district))
-const isFormValid = computed(() => form.value.user_id && form.value.district && form.value.province)
+const isEdit = computed(() => !!props.instructorItem?.id)
 
-const filteredDistricts = computed(() => {
-  if (!districtSearch.value.trim()) return districts.value
-  const search = districtSearch.value.toLowerCase()
-  return districts.value.filter(district => 
-    district.name.toLowerCase().includes(search) ||
-    district.province.toLowerCase().includes(search)
+const isFormValid = computed(() => {
+  if (isEdit.value) {
+    // Untuk edit, hanya butuh district dan province
+    return form.value.district && form.value.province
+  } else {
+    // Untuk create, butuh semua field
+    return form.value.user_id && form.value.district && form.value.province
+  }
+})
+
+const filteredUsers = computed(() => {
+  if (!searchQuery.value) return users.value
+  return users.value.filter(user => 
+    user.full_name?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+    user.email?.toLowerCase().includes(searchQuery.value.toLowerCase())
   )
 })
 
-// Methods
-const searchUsers = async (searchTerm = '') => {
-  if (searchTimeout.value) {
-    clearTimeout(searchTimeout.value)
-  }
-  
-  searchTimeout.value = setTimeout(async () => {
-    try {
-      searchingUsers.value = true
-      
-      let query = supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url, email')
-        .eq('role', 'petani')
-        .order('full_name')
-        .limit(20)
-
-      if (searchTerm.trim()) {
-        query = query.ilike('full_name', `%${searchTerm}%`)
-      }
-
-      const { data, error } = await query
-      if (error) throw error
-      
-      users.value = data || []
-    } catch (error) {
-      console.error('Error searching users:', error)
-      toast({
-        title: "Error",
-        description: "Gagal mencari user",
-        variant: "destructive"
-      })
-    } finally {
-      searchingUsers.value = false
+// Get selected user info for edit mode display
+const selectedUserInfo = computed(() => {
+  if (isEdit.value && props.instructorItem) {
+    return {
+      full_name: props.instructorItem.full_name,
+      email: props.instructorItem.email,
+      avatar_url: props.instructorItem.avatarUrl || props.instructorItem.profiles?.avatar_url,
+      phone: props.instructorItem.phone,
+      address: props.instructorItem.address
     }
-  }, 300)
+  }
+  return null
+})
+
+// Helper functions
+const getInitials = (name: string) => {
+  return name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+function getAvatarUrl(avatarPath: string | null) {
+  if (!avatarPath) return null
+  const { data } = supabase.storage
+    .from('avatars')
+    .getPublicUrl(avatarPath)
+  return data.publicUrl
+}
+
+// Load users dengan role 'petani'
+const loadUsers = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, email, role')
+      .eq('role', 'petani')
+      .order('full_name', { ascending: true })
+
+    if (error) throw error
+    users.value = data || []
+  } catch (error) {
+    console.error('Error loading users:', error)
+    toast({
+      title: "Error",
+      description: "Gagal memuat data user",
+      variant: "destructive"
+    })
+  }
 }
 
 const fetchDistricts = async () => {
@@ -130,59 +146,69 @@ const handleSubmit = async () => {
   try {
     const now = new Date().toISOString()
     
-    // 1. Save to instructors table
-    const instructorData = {
-      user_id: form.value.user_id,
-      district: form.value.district,
-      provinces: form.value.province,
-      note: form.value.note,
-      updated_at: now
-    }
-
     if (isEdit.value && props.instructorItem?.id) {
-      // Update existing instructor
+      // Update existing instructor - hanya update district, province, dan note
+      const instructorData = {
+        district: form.value.district,
+        provinces: form.value.province,
+        note: form.value.note,
+        updated_at: now
+      }
+
       const { error } = await supabase
         .from('instructors')
         .update(instructorData)
         .eq('id', props.instructorItem.id)
       
       if (error) throw error
+
+      toast({
+        title: "Berhasil",
+        description: "Data instructor berhasil diperbarui"
+      })
     } else {
       // Create new instructor
+      const instructorData = {
+        user_id: form.value.user_id,
+        district: form.value.district,
+        provinces: form.value.province,
+        note: form.value.note,
+        created_at: now,
+        updated_at: now
+      }
+
       const { error } = await supabase
         .from('instructors')
-        .insert({ ...instructorData, created_at: now })
+        .insert(instructorData)
       
       if (error) throw error
-    }
 
-    // 2. Update user role to 'penyuluh'
-    const { error: roleError } = await supabase
-      .from('profiles')
-      .update({ 
-        role: 'penyuluh',
-        updated_at: now
+      // Update user role to 'penyuluh'
+      const { error: roleError } = await supabase
+        .from('profiles')
+        .update({ 
+          role: 'penyuluh',
+          updated_at: now
+        })
+        .eq('id', form.value.user_id)
+
+      if (roleError) {
+        console.warn('Failed to update user role:', roleError)
+      }
+
+      toast({
+        title: "Berhasil",
+        description: "Instructor berhasil ditambahkan dan role user diubah menjadi penyuluh"
       })
-      .eq('id', form.value.user_id)
-
-    if (roleError) {
-      console.warn('Failed to update user role:', roleError)
     }
 
-    toast({
-      title: "Berhasil",
-      description: `Penyuluh berhasil ${isEdit.value ? 'diperbarui' : 'ditambahkan'} dan role user diubah menjadi penyuluh`
-    })
-
-    emit('success')
-    emit('update:open', false)
-    resetForm()
+    closeDialog()
 
   } catch (error) {
     console.error('Error saving instructor:', error)
     toast({
       title: "Error",
-      description: "Gagal menyimpan data penyuluh",
+      description: `Gagal ${isEdit.value ? 'memperbarui' : 'menyimpan'} data instructor`,
       variant: "destructive"
     })
   } finally {
@@ -197,22 +223,13 @@ const resetForm = () => {
     province: '',
     note: ''
   }
-  userSearch.value = ''
-  districtSearch.value = ''
-  users.value = []
+  searchQuery.value = ''
 }
 
-const selectUser = (user) => {
-  form.value.user_id = user.id
-  userOpen.value = false
-  userSearch.value = user.full_name || user.email
-}
-
-const selectDistrict = (district) => {
-  form.value.district = district.name
-  form.value.province = district.province
-  districtOpen.value = false
-  districtSearch.value = district.name
+const closeDialog = () => {
+  emit('instructor-added')
+  emit('update:open', false)
+  resetForm()
 }
 
 const handleDialogClose = () => {
@@ -220,33 +237,63 @@ const handleDialogClose = () => {
   resetForm()
 }
 
-// Watchers
-watch(userSearch, (newSearch) => {
-  searchUsers(newSearch.trim())
-})
+const populateFormForEdit = (instructor) => {
+  console.log('Populating form for edit:', instructor) // Debug log
+  
+  form.value = {
+    user_id: instructor.user_id || '',
+    district: instructor.district || '',
+    province: instructor.provinces || instructor.province || '',
+    note: instructor.note || ''
+  }
+  
+  console.log('Form populated:', form.value) // Debug log
+}
 
-watch(() => props.instructorItem, (newItem) => {
-  if (newItem) {
-    form.value = {
-      user_id: newItem.user_id || '',
-      district: newItem.district || '',
-      province: newItem.provinces || '',
-      note: newItem.note || ''
-    }
-    
-    if (newItem.user_id) {
-      // Load user data for edit mode
-      searchUsers()
-    }
-  } else {
+// Handle district selection
+const handleDistrictSelect = (districtId) => {
+  const selectedDistrict = districts.value.find(d => d.id === districtId)
+  if (selectedDistrict) {
+    form.value.district = selectedDistrict.name
+    form.value.province = selectedDistrict.province
+  }
+}
+
+// Watch untuk props.instructorItem
+watch(() => props.instructorItem, async (newItem) => {
+  console.log('instructorItem changed:', newItem) // Debug log
+  
+  if (newItem && props.open) {
+    // Wait for next tick to ensure the dialog is fully rendered
+    await nextTick()
+    populateFormForEdit(newItem)
+  } else if (!newItem) {
     resetForm()
   }
-}, { immediate: true })
+}, { immediate: true, deep: true })
+
+// Watch untuk props.open
+watch(() => props.open, async (isOpen) => {
+  if (isOpen && props.instructorItem) {
+    // Populate form when dialog opens with instructor data
+    await nextTick()
+    populateFormForEdit(props.instructorItem)
+  } else if (!isOpen) {
+    // Reset form when dialog closes
+    resetForm()
+  }
+})
 
 // Lifecycle
-onMounted(() => {
-  fetchDistricts()
-  searchUsers()
+onMounted(async () => {
+  console.log('Component mounted') // Debug log
+  await fetchDistricts()
+  await loadUsers()
+  
+  // Jika instructorItem sudah ada saat mount, populate form
+  if (props.instructorItem) {
+    populateFormForEdit(props.instructorItem)
+  }
 })
 </script>
 
@@ -255,173 +302,114 @@ onMounted(() => {
     <DialogContent class="max-w-2xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>
-          {{ isEdit ? 'Edit Penyuluh' : 'Tambah Penyuluh Baru' }}
+          {{ isEdit ? 'Edit Instructor' : 'Tambah Instructor Baru' }}
         </DialogTitle>
       </DialogHeader>
 
       <form @submit.prevent="handleSubmit" class="space-y-6">
-        <!-- User Selection -->
+        <!-- User Info Section -->
         <div class="space-y-2">
-          <Label>Pilih User *</Label>
-          <Popover v-model:open="userOpen">
-            <PopoverTrigger as-child>
-              <Button
-                variant="outline"
-                role="combobox"
-                :aria-expanded="userOpen"
-                class="w-full justify-between h-auto min-h-[2.5rem] py-2"
-                :disabled="loading"
-              >
-                <div class="flex items-center space-x-2 flex-1 min-w-0">
-                  <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    <img 
-                      v-if="selectedUser?.avatar_url" 
-                      :src="selectedUser.avatar_url" 
-                      :alt="selectedUser.full_name"
-                      class="w-full h-full object-cover"
-                    />
-                    <User v-else class="h-3 w-3 text-gray-500" />
-                  </div>
-                  <div class="flex-1 min-w-0 text-left">
-                    <div v-if="selectedUser" class="truncate">
-                      <span class="font-medium">{{ selectedUser.full_name || selectedUser.email }}</span>
-                    </div>
-                    <span v-else class="text-muted-foreground">
-                      Pilih user...
-                    </span>
-                  </div>
-                </div>
-                <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent class="w-full p-0">
-              <Command>
-                <CommandInput 
-                  v-model="userSearch"
-                  placeholder="Ketik nama atau email untuk mencari..." 
+          <Label>{{ isEdit ? 'Instructor' : 'Pilih User' }} *</Label>
+          
+          <!-- Mode Edit: Display instructor info (read-only) -->
+          <div v-if="isEdit && selectedUserInfo" class="border rounded-md p-4 bg-gray-50">
+            <div class="flex items-center space-x-3">
+              <Avatar class="h-12 w-12">
+                <AvatarImage 
+                  :src="getAvatarUrl(selectedUserInfo.avatar_url)" 
+                  :alt="selectedUserInfo.full_name" 
                 />
-                <CommandEmpty>
-                  <div v-if="searchingUsers" class="p-4 text-center">
-                    <Loader2 class="h-6 w-6 animate-spin mx-auto text-gray-400" />
-                    <p class="mt-2 text-sm text-muted-foreground">Mencari user...</p>
-                  </div>
-                  <div v-else class="p-4 text-center">
-                    <p class="text-sm text-muted-foresize">
-                      {{ userSearch.trim() ? 'User tidak ditemukan.' : 'Ketik untuk mencari user.' }}
-                    </p>
-                  </div>
-                </CommandEmpty>
-                <CommandGroup>
-                  <CommandList class="max-h-60">
-                    <CommandItem
-                      v-for="user in users"
-                      :key="user.id"
-                      :value="`${user.full_name} ${user.email}`"
-                      @select="selectUser(user)"
-                      class="cursor-pointer"
-                    >
-                      <div class="flex items-center space-x-3 w-full">
-                        <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
-                          <img 
-                            v-if="user.avatar_url" 
-                            :src="user.avatar_url" 
-                            :alt="user.full_name"
-                            class="w-full h-full object-cover"
-                          />
-                          <User v-else class="h-4 w-4 text-gray-500" />
-                        </div>
-                        <div class="flex-1 min-w-0">
-                          <p class="font-medium truncate">{{ user.full_name }}</p>
-                          <p class="text-xs text-muted-foreground truncate">{{ user.email }}</p>
-                        </div>
-                        <Check
-                          :class="[
-                            'ml-auto h-4 w-4 flex-shrink-0',
-                            form.user_id === user.id ? 'opacity-100' : 'opacity-0'
-                          ]"
-                        />
+                <AvatarFallback class="bg-blue-100 text-blue-700 text-sm">
+                  {{ getInitials(selectedUserInfo.full_name || 'Instructor') }}
+                </AvatarFallback>
+              </Avatar>
+              <div class="flex-1 min-w-0">
+                <h3 class="font-semibold text-lg">{{ selectedUserInfo.full_name || 'Nama tidak tersedia' }}</h3>
+                <p class="text-sm text-muted-foreground">{{ selectedUserInfo.email || 'Email tidak tersedia' }}</p>
+                <p v-if="selectedUserInfo.phone" class="text-xs text-muted-foreground mt-1">
+                  📞 {{ selectedUserInfo.phone }}
+                </p>
+                <div v-if="selectedUserInfo.address" class="text-xs text-muted-foreground mt-1 max-w-md">
+                  📍 {{ selectedUserInfo.address }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mode Create: User selection with search -->
+          <template v-else-if="!isEdit">
+            <!-- Search Input -->
+            <div class="relative">
+              <Search class="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                v-model="searchQuery"
+                placeholder="Cari user..."
+                class="pl-10"
+                :disabled="loading"
+              />
+            </div>
+
+            <!-- User Select -->
+            <Select v-model="form.user_id" :disabled="loading">
+              <SelectTrigger class="h-auto min-h-[2.5rem] py-2">
+                <SelectValue placeholder="Pilih user yang akan dijadikan instructor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="user in filteredUsers"
+                  :key="user.id"
+                  :value="user.id"
+                  class="cursor-pointer"
+                >
+                  <div class="flex items-center space-x-3 w-full">
+                    <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      <img 
+                        v-if="user.avatar_url" 
+                        :src="getAvatarUrl(user.avatar_url)" 
+                        :alt="user.full_name"
+                        class="w-full h-full object-cover"
+                      />
+                      <div v-else class="text-xs font-medium text-gray-600">
+                        {{ getInitials(user.full_name || user.email || 'U') }}
                       </div>
-                    </CommandItem>
-                  </CommandList>
-                </CommandGroup>
-              </Command>
-            </PopoverContent>
-          </Popover>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="font-medium truncate">{{ user.full_name || user.email }}</p>
+                      <p class="text-xs text-muted-foreground truncate">{{ user.role }}</p>
+                    </div>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </template>
         </div>
 
-        <!-- District Selection -->
+        <!-- District Selection (Always editable) -->
         <div class="space-y-2">
           <Label>Kabupaten/Kota *</Label>
-          <Popover v-model:open="districtOpen">
-            <PopoverTrigger as-child>
-              <Button
-                variant="outline"
-                role="combobox"
-                :aria-expanded="districtOpen"
-                class="w-full justify-between h-auto min-h-[2.5rem] py-2"
-                :disabled="loading"
+          <Select 
+            :model-value="districts.find(d => d.name === form.district)?.id || ''"
+            @update:model-value="handleDistrictSelect"
+            :disabled="loading"
+          >
+            <SelectTrigger>
+              <SelectValue 
+                :placeholder="form.district || 'Pilih kabupaten/kota...'"
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="district in districts"
+                :key="district.id"
+                :value="district.id"
               >
-                <div class="flex items-center space-x-2 flex-1 min-w-0">
-                  <MapPin class="h-4 w-4 text-gray-500 flex-shrink-0" />
-                  <div class="flex-1 min-w-0 text-left">
-                    <div v-if="selectedDistrict" class="truncate">
-                      <span class="font-medium">{{ selectedDistrict.name }}</span>
-                      <span class="text-xs text-muted-foreground ml-2">
-                        ({{ selectedDistrict.province }})
-                      </span>
-                    </div>
-                    <span v-else class="text-muted-foreground">
-                      Pilih kabupaten/kota...
-                    </span>
-                  </div>
-                </div>
-                <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent class="w-full p-0">
-              <Command>
-                <CommandInput 
-                  v-model="districtSearch"
-                  placeholder="Ketik nama kabupaten/kota..." 
-                />
-                <CommandEmpty>
-                  <div class="p-4 text-center">
-                    <p class="text-sm text-muted-foreground">
-                      {{ districtSearch.trim() ? 'Kabupaten/kota tidak ditemukan.' : 'Ketik untuk mencari kabupaten/kota.' }}
-                    </p>
-                  </div>
-                </CommandEmpty>
-                <CommandGroup>
-                  <CommandList class="max-h-60">
-                    <CommandItem
-                      v-for="district in filteredDistricts"
-                      :key="district.id"
-                      :value="`${district.name} ${district.province}`"
-                      @select="selectDistrict(district)"
-                      class="cursor-pointer"
-                    >
-                      <div class="flex items-center space-x-3 w-full">
-                        <MapPin class="h-4 w-4 text-gray-500 flex-shrink-0" />
-                        <div class="flex-1 min-w-0">
-                          <p class="font-medium truncate">{{ district.name }}</p>
-                          <p class="text-xs text-muted-foreground truncate">{{ district.province }}</p>
-                        </div>
-                        <Check
-                          :class="[
-                            'ml-auto h-4 w-4 flex-shrink-0',
-                            form.district === district.name ? 'opacity-100' : 'opacity-0'
-                          ]"
-                        />
-                      </div>
-                    </Commanditem>
-                  </CommandList>
-                </CommandGroup>
-              </Command>
-            </PopoverContent>
-          </Popover>
+                {{ district.name }} - {{ district.province }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        <!-- Province (Read-only) -->
+        <!-- Province (Read-only, auto-filled) -->
         <div class="space-y-2">
           <Label for="province">Provinsi *</Label>
           <Input
@@ -433,16 +421,23 @@ onMounted(() => {
           />
         </div>
 
-        <!-- Note -->
+        <!-- Note (Always editable) -->
         <div class="space-y-2">
           <Label for="note">Catatan</Label>
           <Textarea
             id="note"
             v-model="form.note"
-            placeholder="Masukkan catatan tentang penyuluh..."
+            placeholder="Masukkan catatan tentang instructor..."
             rows="4"
             :disabled="loading"
           />
+        </div>
+
+        <!-- Info untuk Edit Mode -->
+        <div v-if="isEdit" class="p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <p class="text-sm text-blue-700">
+            <strong>Info:</strong> Dalam mode edit, hanya kabupaten/kota, provinsi, dan catatan yang dapat diubah.
+          </p>
         </div>
 
         <!-- Actions -->
@@ -470,4 +465,3 @@ onMounted(() => {
     </DialogContent>
   </Dialog>
 </template>
-

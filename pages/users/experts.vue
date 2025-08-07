@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Eye, MoreHorizontal, Users2, UserCheck, Trash2, MapPin, Phone, Calendar, Filter, RotateCcw, Plus, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Eye, MoreHorizontal, Users2, UserCheck, Trash2, MapPin, Phone, Calendar, Filter, RotateCcw, Plus, ChevronLeft, ChevronRight, Edit } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -46,7 +46,9 @@ const router = useRouter()
 const refreshKey = ref(0)
 const deleteDialogOpen = ref(false)
 const addExpertDialogOpen = ref(false)
+const editExpertDialogOpen = ref(false)
 const expertToDelete = ref(null)
+const expertToEdit = ref(null)
 
 // Filter states
 const statusFilter = ref('all') // 'all', 'active', 'deleted'
@@ -265,6 +267,11 @@ function openAddExpertDialog() {
   addExpertDialogOpen.value = true
 }
 
+function openEditExpertDialog(expert: any) {
+  expertToEdit.value = expert
+  editExpertDialogOpen.value = true
+}
+
 function confirmDelete(expert: any) {
   expertToDelete.value = expert
   deleteDialogOpen.value = true
@@ -336,6 +343,12 @@ async function restoreExpert(expertId: string) {
 
 function onExpertAdded() {
   addExpertDialogOpen.value = false
+  refreshAllData()
+}
+
+function onExpertUpdated() {
+  editExpertDialogOpen.value = false
+  expertToEdit.value = null
   refreshAllData()
 }
 
@@ -444,8 +457,6 @@ watch([statusFilter, categoryFilter], () => {
             <Plus class="h-4 w-4 mr-2" />
             Tambah Expert
           </Button>
-          
-          
           
           <Button @click="refreshAllData" variant="outline">
             Refresh Data
@@ -594,6 +605,14 @@ watch([statusFilter, categoryFilter], () => {
                       Lihat Detail
                     </DropdownMenuItem>
                     <DropdownMenuItem
+                      v-if="expert.isActive"
+                      class="flex cursor-pointer items-center gap-2 text-blue-600 focus:text-blue-600"
+                      @click="openEditExpertDialog(expert)"
+                    >
+                      <Edit class="h-4 w-4" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       v-if="!expert.isActive"
                       class="flex cursor-pointer items-center gap-2 text-green-600 focus:text-green-600"
                       @click="restoreExpert(expert.id)"
@@ -668,7 +687,14 @@ watch([statusFilter, categoryFilter], () => {
     <!-- Add Expert Dialog -->
     <Dialog 
       v-model:open="addExpertDialogOpen"
-      @expert-added="onExpertAdded"
+      @success="onExpertAdded"
+    />
+
+    <!-- Edit Expert Dialog -->
+    <Dialog 
+      v-model:open="editExpertDialogOpen"
+      :expert-item="expertToEdit"
+      @success="onExpertUpdated"
     />
 
     <!-- Delete Confirmation Dialog -->
